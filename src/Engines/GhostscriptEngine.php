@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace GomdimApps\Slimmer\Engines;
 
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
+use Symfony\Component\Process\Process;
 
 /**
  * Executes Ghostscript commands as a subprocess using proc_open.
@@ -21,6 +23,33 @@ class GhostscriptEngine
     public function __construct(string $binary = 'gs')
     {
         $this->binary = $this->resolveBinary($binary);
+    }
+
+    /** Timeout for the engine execution in seconds (0 = no timeout) */
+    private float $timeout = 0;
+
+    /**
+     * Set a timeout for Ghostscript execution.
+     */
+    public function setTimeout(float $seconds): static
+    {
+        $this->timeout = $seconds;
+        return $this;
+    }
+
+    /**
+     * Get Ghostscript version.
+     */
+    public function getVersion(): string
+    {
+        $process = new Process([$this->binary, '--version']);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            throw SlimmerException::engineCommandFailed($this->binary . ' --version', $process->getExitCode() ?? 1);
+        }
+
+        return trim($process->getOutput());
     }
 
     // -------------------------------------------------------------------------
@@ -70,7 +99,7 @@ class GhostscriptEngine
     /**
      * Build argv array for proc_open.
      */
-    private function buildArgv(
+    public function buildArgv(
         string $inputPath,
         string $outputPath,
         string $pdfSettings,
@@ -100,7 +129,7 @@ class GhostscriptEngine
     /**
      * Build argv array for proc_open for images.
      */
-    private function buildImageArgv(
+    public function buildImageArgv(
         string $inputPath,
         string $outputPath,
         string $device,
@@ -144,33 +173,21 @@ class GhostscriptEngine
      */
     private function execute(array $argv): void
     {
-        $descriptors = [
-            0 => ['pipe', 'r'],  // stdin
-            1 => ['pipe', 'w'],  // stdout
-            2 => ['pipe', 'w'],  // stderr
-        ];
+        $process = new Process($argv);
+        
+        $process->setTimeout($this->timeout > 0 ? $this->timeout : null);
 
-        $process = proc_open($argv, $descriptors, $pipes);
-
-        if (!is_resource($process)) {
-            throw new SlimmerException(
-                'Failed to launch Ghostscript process: ' . $this->binary
-            );
+        try {
+            $process->run();
+        } catch (ProcessTimedOutException $e) {
+            throw new SlimmerException('Ghostscript process timed out after ' . $this->timeout . ' seconds.');
         }
 
-        fclose($pipes[0]);
-
-        $stderr  = (string) stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-
-        $exitCode = proc_close($process);
-
-        if ($exitCode !== 0) {
+        if (!$process->isSuccessful()) {
             throw SlimmerException::engineCommandFailed(
                 implode(' ', $argv),
-                $exitCode,
-                trim($stderr)
+                $process->getExitCode() ?? 1,
+                trim($process->getErrorOutput())
             );
         }
     }

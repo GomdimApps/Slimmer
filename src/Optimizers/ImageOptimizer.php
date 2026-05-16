@@ -7,12 +7,14 @@ namespace GomdimApps\Slimmer\Optimizers;
 use GomdimApps\Slimmer\Contracts\Optimizer;
 use GomdimApps\Slimmer\Engines\GhostscriptEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
+use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
 
 /**
  * Optimizes Image files (JPG, JPEG, PNG) to PDF using Ghostscript.
  */
 class ImageOptimizer implements Optimizer
 {
+    use InteractsWithTemporaryInput;
     /** JPEG Quality (0-100) */
     private int $quality = 75;
 
@@ -50,30 +52,48 @@ class ImageOptimizer implements Optimizer
         return $this;
     }
 
+    /**
+     * Explicitly set dimensions (e.g. 800, 600).
+     */
+    public function withDimensions(int $width, int $height): static
+    {
+        $this->dimensions = "{$width}x{$height}";
+
+        return $this;
+    }
+
     // -------------------------------------------------------------------------
     // Optimizer contract
     // -------------------------------------------------------------------------
 
     /**
+     * Explicitly set string dimensions e.g. "800x600"
+     */
+    private ?string $dimensions = null;
+
+    /**
      * @throws SlimmerException
      */
-    public function optimize(string $inputPath, string $outputPath): float
+    public function optimize(?string $inputPath, string $outputPath): float
     {
-        $this->validateInputFile($inputPath);
+        $resolvedInputPath = $this->resolveInputPath($inputPath);
+        $this->validateInputFile($resolvedInputPath);
         $this->validateOutputDirectory($outputPath);
 
-        $originalSize = filesize($inputPath);
+        $originalSize = filesize($resolvedInputPath);
         
-        $dimensions = null;
-        $imageSize = @getimagesize($inputPath);
-        if ($imageSize !== false) {
-            $dimensions = $imageSize[0] . 'x' . $imageSize[1];
+        $dimensions = $this->dimensions;
+        if ($dimensions === null) {
+            $imageSize = @getimagesize($resolvedInputPath);
+            if ($imageSize !== false) {
+                $dimensions = $imageSize[0] . 'x' . $imageSize[1];
+            }
         }
 
         $device = $this->determineDevice($outputPath);
 
         $this->engine->compressImage(
-            $inputPath,
+            $resolvedInputPath,
             $outputPath,
             $device,
             $this->quality,
@@ -96,6 +116,35 @@ class ImageOptimizer implements Optimizer
         $ratio = ($originalSize - $optimizedSize) / $originalSize;
 
         return max(0.0, round($ratio, 4));
+    }
+
+    /**
+     * Return the exact string of the command that would be executed, without starting the process.
+     */
+    public function dryRun(?string $inputPath, string $outputPath): string
+    {
+        $resolvedInputPath = $this->resolveInputPath($inputPath);
+        
+        $dimensions = $this->dimensions;
+        if ($dimensions === null) {
+            $imageSize = @getimagesize($resolvedInputPath);
+            if ($imageSize !== false) {
+                $dimensions = $imageSize[0] . 'x' . $imageSize[1];
+            }
+        }
+
+        $device = $this->determineDevice($outputPath);
+
+        $argv = $this->engine->buildImageArgv(
+            $resolvedInputPath,
+            $outputPath,
+            $device,
+            $this->quality,
+            $dimensions,
+            $this->extraArgs
+        );
+
+        return implode(' ', $argv);
     }
 
     // -------------------------------------------------------------------------
