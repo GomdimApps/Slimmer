@@ -8,6 +8,7 @@ use GomdimApps\Slimmer\Contracts\Optimizer;
 use GomdimApps\Slimmer\Engines\GhostscriptEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
+use GomdimApps\Slimmer\Traits\OptimizationIO;
 
 /**
  * Optimizes Image files (JPG, JPEG, PNG) to PDF using Ghostscript.
@@ -15,6 +16,8 @@ use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
 class ImageOptimizer implements Optimizer
 {
     use InteractsWithTemporaryInput;
+    use OptimizationIO;
+
     /** JPEG Quality (0-100) */
     private int $quality = 75;
 
@@ -161,21 +164,4 @@ class ImageOptimizer implements Optimizer
         };
     }
 
-    /** @throws SlimmerException */
-    private function validateInputFile(string $path): void
-    {
-        if (!is_file($path) || !is_readable($path)) {
-            throw SlimmerException::inputFileNotFound($path);
-        }
-    }
-
-    /** @throws SlimmerException */
-    private function validateOutputDirectory(string $path): void
-    {
-        $directory = dirname($path);
-
-        if (!is_dir($directory) || !is_writable($directory)) {
-            throw SlimmerException::outputDirectoryNotWritable($directory);
-        }
-    }
 }

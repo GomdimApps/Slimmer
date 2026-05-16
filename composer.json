@@ -1,6 +1,6 @@
 {
     "name": "gomdim-apps/slimmer",
-    "description": "Compactador de PDFs e Imagens usando Ghostscript e GD",
+    "description": "PDF, image, and file compressor (Tar/Zstd) using Ghostscript and GD",
     "type": "library",
     "license": "MIT",
     "authors": [

@@ -10,7 +10,7 @@ services:
       - .:/app
       - slimmer_vendor:/app/vendor # Container vendor preservation
     # Default test command
-    command: ["vendor/bin/pest", "--configuration", "phpunit.xml"]
+    command: ["vendor/bin/pest", "--configuration", "phpunit.xml", "--test-directory=test"]
     working_dir: /app
 
 volumes:

@@ -1,0 +1,35 @@
+name: Feature Request or Improvement
+description: Suggest an idea or a general improvement for Slimmer.
+title: "[Suggestion]: "
+labels: ["enhancement", "discussion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to make Slimmer even better? We'd love to hear it!
+  - type: textarea
+    id: idea
+    attributes:
+      label: What is your suggestion?
+      description: A clear and concise description of what you want to happen.
+      placeholder: I would like to see support for...
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why is this needed?
+      description: Is your feature request related to a problem? Please describe.
+      placeholder: Currently, I have to manually...
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Potential Solution
+      description: If you have an idea on how to implement this, let us know!
+      placeholder: Maybe we could add a new method to the Optimizer class...
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Would you like to work on this?
+      options:
+        - label: I am willing to submit a Pull Request for this feature.
