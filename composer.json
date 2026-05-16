@@ -21,7 +21,8 @@
     },
     "require": {
         "php": ">=8.2",
-        "ext-gd": "*"
+        "ext-gd": "*",
+        "symfony/process": "^8.0"
     },
     "require-dev": {
         "pestphp/pest": "^3.0",

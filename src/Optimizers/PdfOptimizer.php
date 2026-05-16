@@ -7,12 +7,14 @@ namespace GomdimApps\Slimmer\Optimizers;
 use GomdimApps\Slimmer\Contracts\Optimizer;
 use GomdimApps\Slimmer\Engines\GhostscriptEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
+use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
 
 /**
  * Optimizes PDF files using Ghostscript.
  */
 class PdfOptimizer implements Optimizer
 {
+    use InteractsWithTemporaryInput;
     /** Ghostscript PDFSETTINGS preset */
     private string $quality = 'ebook';
 
@@ -72,15 +74,16 @@ class PdfOptimizer implements Optimizer
     /**
      * @throws SlimmerException
      */
-    public function optimize(string $inputPath, string $outputPath): float
+    public function optimize(?string $inputPath, string $outputPath): float
     {
-        $this->validateInputFile($inputPath);
+        $resolvedInputPath = $this->resolveInputPath($inputPath);
+        $this->validateInputFile($resolvedInputPath);
         $this->validateOutputDirectory($outputPath);
 
-        $originalSize = filesize($inputPath);
+        $originalSize = filesize($resolvedInputPath);
 
         $this->engine->compress(
-            $inputPath,
+            $resolvedInputPath,
             $outputPath,
             $this->buildPdfSettings(),
             $this->compatibilityLevel,
@@ -102,6 +105,24 @@ class PdfOptimizer implements Optimizer
         $ratio = ($originalSize - $optimizedSize) / $originalSize;
 
         return max(0.0, round($ratio, 4));
+    }
+
+    /**
+     * Return the exact string of the command that would be executed, without starting the process.
+     */
+    public function dryRun(?string $inputPath, string $outputPath): string
+    {
+        $resolvedInputPath = $this->resolveInputPath($inputPath);
+        
+        $argv = $this->engine->buildArgv(
+            $resolvedInputPath,
+            $outputPath,
+            $this->buildPdfSettings(),
+            $this->compatibilityLevel,
+            $this->extraArgs
+        );
+
+        return implode(' ', $argv);
     }
 
     // -------------------------------------------------------------------------
