@@ -4,6 +4,7 @@ FROM php:8.4-cli-alpine
 # System dependencies
 RUN apk add --no-cache \
         ghostscript \
+        zstd \
         freetype \
         libjpeg-turbo \
         libpng \
