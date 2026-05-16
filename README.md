@@ -1,11 +1,7 @@
 # Slimmer
 
-[![PHP Version](https://shields.io)](https://php.net)
-[![License](https://shields.io)](https://github.com)
-[![Composer Downloads](https://shields.io)](https://packagist.org)
-![Ghostscript Required](https://shields.io)
-
 A PHP library for advanced file compression. Supports high-quality PDF optimization and image compression via Ghostscript, and directory/file archiving via tar (.tar.gz / .tar.zst).
+
 
 ## Requirements
 
