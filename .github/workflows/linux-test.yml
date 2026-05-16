@@ -1,0 +1,25 @@
+name: so/linux-test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  php-tests:
+    name: Run Pest on Alpine Linux (PHP 8.4)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 2. Build Docker Image
+        run: docker build -t slimmer-test .
+
+      - name: 3. Execute Tests
+        run: docker run --rm slimmer-test vendor/bin/pest --configuration phpunit.xml
+
+      - name: 4. Check Ghostscript Version
+        run: docker run --rm slimmer-test gs --version
