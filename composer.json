@@ -1,0 +1,40 @@
+{
+    "name": "gomdim-apps/slimmer",
+    "description": "Compactador de PDFs e Imagens usando Ghostscript e GD",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "isac Gondim",
+            "email": "isac.gondim.dev@gmail.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "GomdimApps\\Slimmer\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "GomdimApps\\Slimmer\\Tests\\": "test/"
+        }
+    },
+    "require": {
+        "php": ">=8.2",
+        "ext-gd": "*"
+    },
+    "require-dev": {
+        "pestphp/pest": "^3.0",
+        "phpunit/phpunit": "^11.0"
+    },
+    "scripts": {
+        "test": "vendor/bin/pest --configuration phpunit.xml",
+        "test-gs": "docker run --rm -i --network host --user $(id -u):$(id -g) -v $(pwd):/app -w /app php-alpine:8.4-gs php vendor/bin/pest --configuration phpunit.xml"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    }
+}

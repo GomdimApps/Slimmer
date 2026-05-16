@@ -1,0 +1,7 @@
+.git
+.gitignore
+vendor
+*.md
+docker-compose.yml
+Makefile
+Dockerfile
