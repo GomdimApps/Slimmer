@@ -8,7 +8,7 @@ use GomdimApps\Slimmer\Contracts\Optimizer;
 use GomdimApps\Slimmer\Engines\GhostscriptEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
-use GomdimApps\Slimmer\Traits\ValidatesOptimizationIO;
+use GomdimApps\Slimmer\Traits\OptimizationIO;
 
 /**
  * Optimizes Image files (JPG, JPEG, PNG) to PDF using Ghostscript.
@@ -16,7 +16,7 @@ use GomdimApps\Slimmer\Traits\ValidatesOptimizationIO;
 class ImageOptimizer implements Optimizer
 {
     use InteractsWithTemporaryInput;
-    use ValidatesOptimizationIO;
+    use OptimizationIO;
 
     /** JPEG Quality (0-100) */
     private int $quality = 75;

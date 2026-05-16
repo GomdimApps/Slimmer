@@ -23,13 +23,19 @@ class SlimmerException extends RuntimeException
         return new static("Output directory is not writable: \"{$directory}\".");
     }
 
-    /** Engine binary (Ghostscript) not found */
+    /** Engine binary not found */
     public static function engineNotFound(string $binary): static
     {
         return new static(
             "Required engine binary \"{$binary}\" was not found. "
             . "Please install it and make sure it is on your PATH."
         );
+    }
+
+    /** Required driver/dependency not installed */
+    public static function driverNotInstalled(string $driver): static
+    {
+        return new static("Required driver not installed: {$driver}.");
     }
 
     /** Engine command failed */

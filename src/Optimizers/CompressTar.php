@@ -9,7 +9,7 @@ use GomdimApps\Slimmer\Engines\TarEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 use GomdimApps\Slimmer\Exceptions\TarException;
 use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
-use GomdimApps\Slimmer\Traits\ManagesSourceFiles;
+use GomdimApps\Slimmer\Traits\SourceFiles;
 
 /**
  * Compresses files and directories into tar archives (.tar.gz or .tar.zst).
@@ -22,7 +22,7 @@ use GomdimApps\Slimmer\Traits\ManagesSourceFiles;
 class CompressTar implements Optimizer
 {
     use InteractsWithTemporaryInput;
-    use ManagesSourceFiles;
+    use SourceFiles;
 
     /** Archive format: 'gz' (.tar.gz) or 'zst' (.tar.zst). */
     private string $format = 'gz';

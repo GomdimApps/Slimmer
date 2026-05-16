@@ -12,7 +12,7 @@ use GomdimApps\Slimmer\Exceptions\TarException;
  * Provides recursive size calculation and safe deletion of source files /
  * directories used by CompressTar's retain strategies.
  */
-trait ManagesSourceFiles
+trait SourceFiles
 {
     /**
      * Return the total byte size of a file, or the recursive sum for a directory.

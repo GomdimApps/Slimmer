@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace GomdimApps\Slimmer\Engines;
 
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
-use GomdimApps\Slimmer\Traits\ResolvesEngineBinary;
+use GomdimApps\Slimmer\Traits\Binary;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
@@ -14,7 +14,7 @@ use Symfony\Component\Process\Process;
  */
 class GhostscriptEngine
 {
-    use ResolvesEngineBinary;
+    use Binary;
 
     /** Resolved path to Ghostscript binary */
     private string $binary;

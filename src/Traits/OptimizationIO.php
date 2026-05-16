@@ -12,7 +12,7 @@ use GomdimApps\Slimmer\Exceptions\SlimmerException;
  * Requires the input to be a regular file and the output parent directory
  * to exist and be writable.
  */
-trait ValidatesOptimizationIO
+trait OptimizationIO
 {
     /** @throws SlimmerException */
     private function validateInputFile(string $path): void

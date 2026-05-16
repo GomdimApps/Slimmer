@@ -6,7 +6,7 @@ namespace GomdimApps\Slimmer\Traits;
 
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 
-trait ResolvesEngineBinary
+trait Binary
 {
     /**
      * Resolve a binary name or absolute path to a verified executable path.
@@ -18,7 +18,7 @@ trait ResolvesEngineBinary
         // 1. Caller supplied an absolute path.
         if (str_starts_with($binary, '/')) {
             if (!is_file($binary) || !is_executable($binary)) {
-                throw SlimmerException::engineNotFound($binary);
+                throw SlimmerException::driverNotInstalled($binary);
             }
 
             return $binary;
@@ -54,6 +54,6 @@ trait ResolvesEngineBinary
             }
         }
 
-        throw SlimmerException::engineNotFound($binary);
+        throw SlimmerException::driverNotInstalled($binary);
     }
 }

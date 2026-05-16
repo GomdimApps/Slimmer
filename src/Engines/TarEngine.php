@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace GomdimApps\Slimmer\Engines;
 
 use GomdimApps\Slimmer\Exceptions\TarException;
-use GomdimApps\Slimmer\Traits\ResolvesEngineBinary;
+use GomdimApps\Slimmer\Traits\Binary;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
@@ -16,7 +16,7 @@ use Symfony\Component\Process\Process;
  */
 class TarEngine
 {
-    use ResolvesEngineBinary;
+    use Binary;
 
     private const SUPPORTED_FORMATS = ['gz', 'zst'];
 
