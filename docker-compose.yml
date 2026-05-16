@@ -1,0 +1,17 @@
+services:
+
+  # Test runner
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Local source mount
+    volumes:
+      - .:/app
+      - slimmer_vendor:/app/vendor # Container vendor preservation
+    # Default test command
+    command: ["vendor/bin/pest", "--configuration", "phpunit.xml"]
+    working_dir: /app
+
+volumes:
+  slimmer_vendor:
