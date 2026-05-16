@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="docs/_media/logo.png" alt="Slimmer Logo" width="180" />
+</div>
+
 # Slimmer
 
 > Advanced file compression for PHP — PDF · Images · Archives
