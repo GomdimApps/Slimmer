@@ -8,6 +8,7 @@ use GomdimApps\Slimmer\Contracts\Optimizer;
 use GomdimApps\Slimmer\Engines\GhostscriptEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
+use GomdimApps\Slimmer\Traits\ValidatesOptimizationIO;
 
 /**
  * Optimizes PDF files using Ghostscript.
@@ -15,6 +16,8 @@ use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
 class PdfOptimizer implements Optimizer
 {
     use InteractsWithTemporaryInput;
+    use ValidatesOptimizationIO;
+
     /** Ghostscript PDFSETTINGS preset */
     private string $quality = 'ebook';
 
@@ -135,21 +138,4 @@ class PdfOptimizer implements Optimizer
         return '/' . $this->quality;
     }
 
-    /** @throws SlimmerException */
-    private function validateInputFile(string $path): void
-    {
-        if (!is_file($path) || !is_readable($path)) {
-            throw SlimmerException::inputFileNotFound($path);
-        }
-    }
-
-    /** @throws SlimmerException */
-    private function validateOutputDirectory(string $path): void
-    {
-        $directory = dirname($path);
-
-        if (!is_dir($directory) || !is_writable($directory)) {
-            throw SlimmerException::outputDirectoryNotWritable($directory);
-        }
-    }
 }
