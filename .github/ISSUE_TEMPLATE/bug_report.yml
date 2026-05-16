@@ -1,0 +1,51 @@
+name: Bug Report
+description: Report an error or unexpected behavior in Slimmer.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please provide details to help us fix the issue.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the error or the unexpected result you encountered.
+      placeholder: e.g., The PDF was not compressed, or I got an exception.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment Details
+      description: Mention your OS, PHP version, and Ghostscript version.
+      placeholder: e.g., Ubuntu 22.04, PHP 8.2, GS 9.54
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce & Code
+      description: Provide a minimal code snippet or steps to trigger the bug.
+      render: php
+      placeholder: |
+        $slimmer = new Slimmer();
+        $slimmer->optimize('input.pdf', 'output.pdf');
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs/Output
+      description: Paste any error messages from PHP or the terminal here.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Final Checks
+      options:
+        - label: I have checked that Ghostscript is installed and accessible.
+          required: true
+        - label: I am using the latest version of Slimmer.
+          required: true
