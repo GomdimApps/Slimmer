@@ -29,8 +29,8 @@
         "phpunit/phpunit": "^11.0"
     },
     "scripts": {
-        "test": "vendor/bin/pest --configuration phpunit.xml",
-        "test-gs": "docker run --rm -i --network host --user $(id -u):$(id -g) -v $(pwd):/app -w /app php-alpine:8.4-gs php vendor/bin/pest --configuration phpunit.xml"
+        "test": "vendor/bin/pest --configuration phpunit.xml --test-directory=test",
+        "test-gs": "docker run --rm -i --network host --user $(id -u):$(id -g) -v $(pwd):/app -w /app php-alpine:8.4-gs php vendor/bin/pest --configuration phpunit.xml --test-directory=test"
     },
     "config": {
         "allow-plugins": {

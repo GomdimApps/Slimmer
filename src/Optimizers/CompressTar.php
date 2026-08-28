@@ -46,6 +46,9 @@ class CompressTar implements Optimizer
     /** Whether to skip empty directories when building the archive. */
     private bool $ignoreEmptyDirs = false;
 
+    /** @var callable|null Called with one filename per line of `-v` output as files are added. */
+    private $onProgress = null;
+
     public function __construct(private readonly TarEngine $engine = new TarEngine())
     {
     }
@@ -57,16 +60,18 @@ class CompressTar implements Optimizer
     /**
      * Set the archive format.
      *
-     * @param string $format 'gz' (.tar.gz) or 'zst' (.tar.zst)
+     * @param string $format 'gz' (.tar.gz), 'zst' (.tar.zst) or 'bz2' (.tar.bz2)
      * @throws \InvalidArgumentException
      */
     public function withFormat(string $format): static
     {
-        if (!in_array($format, ['gz', 'zst'], true)) {
+        if (!in_array($format, TarEngine::SUPPORTED_FORMATS, true)) {
             throw new \InvalidArgumentException(
-                "Unknown format \"{$format}\". Allowed: gz, zst."
+                "Unknown format \"{$format}\". Allowed: " . implode(', ', TarEngine::SUPPORTED_FORMATS) . '.'
             );
         }
+
+        $this->assertLevelInRange($this->compressionLevel, $format);
 
         $this->format = $format;
 
@@ -74,10 +79,14 @@ class CompressTar implements Optimizer
     }
 
     /**
-     * Set the compression level.
+     * Set the compression level. Validated against the currently configured format's range.
+     *
+     * @throws \InvalidArgumentException
      */
     public function withCompressionLevel(int $level): static
     {
+        $this->assertLevelInRange($level, $this->format);
+
         $this->compressionLevel = $level;
 
         return $this;
@@ -133,6 +142,16 @@ class CompressTar implements Optimizer
         return $this;
     }
 
+    /**
+     * Receive one filename per line of `-v` output as files are added to the archive.
+     */
+    public function withProgress(callable $callback): static
+    {
+        $this->onProgress = $callback;
+
+        return $this;
+    }
+
     // -------------------------------------------------------------------------
     // Optimizer contract
     // -------------------------------------------------------------------------
@@ -164,7 +183,13 @@ class CompressTar implements Optimizer
 
         $resolvedOutputPath = $this->engine->resolveOutputPath($resolvedInputPath, $outputPath, $this->format);
 
-        $this->engine->compress($resolvedInputPath, $resolvedOutputPath, $this->format, $this->buildExtraArgs());
+        $this->engine->compress(
+            $resolvedInputPath,
+            $resolvedOutputPath,
+            $this->format,
+            $this->buildExtraArgs(),
+            $this->onProgress
+        );
 
         if (!is_file($resolvedOutputPath)) {
             throw new TarException(
@@ -229,7 +254,13 @@ class CompressTar implements Optimizer
 
         $resolvedOutputPath = $this->engine->resolveOutputPath($inputPath, $outputPath, $this->format);
 
-        $this->engine->compress($inputPath, $resolvedOutputPath, $this->format, $this->buildExtraArgs());
+        $this->engine->compress(
+            $inputPath,
+            $resolvedOutputPath,
+            $this->format,
+            $this->buildExtraArgs(),
+            $this->onProgress
+        );
 
         if (!is_file($resolvedOutputPath)) {
             throw new TarException(
@@ -254,8 +285,8 @@ class CompressTar implements Optimizer
     /**
      * Keep only the $limit most-recent archives in $directory, deleting the rest.
      *
-     * Archives are identified by the extensions .tar.gz and .tar.zst and are
-     * ordered by their last-modification time (newest first).
+     * Archives are identified by the extensions .tar.gz, .tar.zst and .tar.bz2, and
+     * are ordered by their last-modification time (newest first).
      *
      * @param string $directory Absolute path to the target directory.
      * @param int    $limit     Number of files to retain (must be >= 0).
@@ -270,7 +301,8 @@ class CompressTar implements Optimizer
 
         $files = array_merge(
             glob($directory . '/*.tar.gz')  ?: [],
-            glob($directory . '/*.tar.zst') ?: []
+            glob($directory . '/*.tar.zst') ?: [],
+            glob($directory . '/*.tar.bz2') ?: []
         );
 
         if (count($files) <= $limit) {
@@ -329,13 +361,34 @@ class CompressTar implements Optimizer
     /** @throws SlimmerException */
     private function validateOutputDirectory(string $outputPath): void
     {
-        $extension = $this->format === 'zst' ? '.tar.zst' : '.tar.gz';
+        $extension = match ($this->format) {
+            'zst' => '.tar.zst',
+            'bz2' => '.tar.bz2',
+            default => '.tar.gz',
+        };
         $directory = str_ends_with($outputPath, $extension)
             ? dirname($outputPath)
             : rtrim($outputPath, '/\\');
 
         if (!is_dir($directory) || !is_writable($directory)) {
             throw SlimmerException::outputDirectoryNotWritable($directory);
+        }
+    }
+
+    /** @throws \InvalidArgumentException */
+    private function assertLevelInRange(int $level, string $format): void
+    {
+        $range = TarEngine::LEVEL_RANGES[$format] ?? null;
+
+        if ($range === null) {
+            return;
+        }
+
+        [$min, $max] = $range;
+        if ($level < $min || $level > $max) {
+            throw new \InvalidArgumentException(
+                "Compression level {$level} is out of range for format \"{$format}\" (allowed: {$min}-{$max})."
+            );
         }
     }
 }

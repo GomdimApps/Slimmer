@@ -66,6 +66,30 @@ sudo apt install zstd
 brew install zstd
 ```
 
+## bzip2 Not Found
+
+`.tar.bz2` archives require `bzip2` to be installed:
+
+```bash
+# Debian / Ubuntu
+sudo apt install bzip2
+
+# macOS (Homebrew)
+brew install bzip2
+```
+
+## zip / unzip Not Found
+
+`.zip` archives require `zip` (compression) and `unzip` (extraction/listing) to be installed. Each is resolved lazily — you only need the one your code path actually uses:
+
+```bash
+# Debian / Ubuntu
+sudo apt install zip unzip
+
+# macOS (Homebrew)
+brew install zip unzip
+```
+
 ## Process Timeout
 
 If compression of a large file exceeds the configured timeout, a `SlimmerException` is thrown. Increase or remove the limit:

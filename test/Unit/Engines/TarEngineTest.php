@@ -330,13 +330,199 @@ describe('TarEngine', function () {
     // -------------------------------------------------------------------------
 
     it('throws TarException for an unsupported format string', function () {
-        expect(fn () => $this->engine->compress($this->sourceDir, '/tmp/out.tar.bz2', 'bz2'))
+        expect(fn () => $this->engine->compress($this->sourceDir, '/tmp/out.tar.rar', 'rar'))
             ->toThrow(TarException::class);
     });
 
     it('TarException message mentions the unsupported format', function () {
         expect(fn () => $this->engine->compress($this->sourceDir, '/tmp/out.tar.xz', 'xz'))
             ->toThrow(TarException::class, 'xz');
+    });
+
+    // -------------------------------------------------------------------------
+    // bz2 format
+    // -------------------------------------------------------------------------
+
+    it('compresses a source directory into a .tar.bz2 archive', function () {
+        $output = $this->outputDir . '/archive.tar.bz2';
+
+        $this->engine->compress($this->sourceDir, $output, 'bz2');
+
+        expect(is_file($output))->toBeTrue()
+            ->and(filesize($output))->toBeGreaterThan(0);
+    });
+
+    it('buildArgv uses bzip2 as the compress program for bz2 format', function () {
+        $argv = $this->engine->buildArgv($this->sourceDir, '/tmp/out.tar.bz2', 'bz2');
+
+        expect(implode(' ', $argv))->toContain('--use-compress-program=bzip2');
+    });
+
+    it('resolveOutputPath generates a .tar.bz2 filename when outputPath has no extension', function () {
+        $result = $this->engine->resolveOutputPath('/data/mydir', $this->outputDir, 'bz2');
+
+        expect($result)->toEndWith('.tar.bz2');
+    });
+
+    // -------------------------------------------------------------------------
+    // Compression-level validation
+    // -------------------------------------------------------------------------
+
+    it('accepts an in-range compression level per format', function (string $format, int $level) {
+        $argv = $this->engine->withCompressionLevel($level)->buildArgv($this->sourceDir, "/tmp/out.tar.{$format}", $format);
+
+        expect($argv)->toBeArray();
+    })->with([
+        ['gz', 1], ['gz', 9],
+        ['zst', 1], ['zst', 19],
+        ['bz2', 1], ['bz2', 9],
+    ]);
+
+    it('throws InvalidArgumentException for an out-of-range compression level', function (string $format, int $level) {
+        expect(fn () => $this->engine->withCompressionLevel($level)->buildArgv($this->sourceDir, "/tmp/out.tar.{$format}", $format))
+            ->toThrow(\InvalidArgumentException::class);
+    })->with([
+        ['gz', 0], ['gz', 10],
+        ['zst', 0], ['zst', 20],
+        ['bz2', 0], ['bz2', 10],
+    ]);
+
+    // -------------------------------------------------------------------------
+    // extract()
+    // -------------------------------------------------------------------------
+
+    it('buildExtractArgv uses -xf, -C and the decompress program', function () {
+        $archive = $this->outputDir . '/x.tar.gz';
+        $cmd = implode(' ', $this->engine->buildExtractArgv($archive, $this->outputDir, 'gz'));
+
+        expect($cmd)->toContain('-xf')
+            ->and($cmd)->toContain($archive)
+            ->and($cmd)->toContain('-C')
+            ->and($cmd)->toContain($this->outputDir)
+            ->and($cmd)->toContain('--use-compress-program=gzip')
+            ->and($cmd)->not->toContain('--strip-components');
+    });
+
+    it('buildExtractArgv appends --strip-components when > 0', function () {
+        $cmd = implode(' ', $this->engine->buildExtractArgv('/tmp/a.tar.gz', '/tmp/out', 'gz', 2));
+
+        expect($cmd)->toContain('--strip-components=2');
+    });
+
+    it('buildExtractArgv omits level/threads from the decompress program', function () {
+        $cmd = implode(' ', $this->engine->withCompressionLevel(9)->withThreads(4)->buildExtractArgv('/tmp/a.tar.zst', '/tmp/out', 'zst'));
+
+        expect($cmd)->toContain('--use-compress-program=zstd')
+            ->and($cmd)->not->toContain('zstd -9')
+            ->and($cmd)->not->toContain('-T4');
+    });
+
+    it('extracts a compressed archive back to matching file contents', function (string $format) {
+        $archive = $this->outputDir . "/roundtrip.tar.{$format}";
+        $this->engine->compress($this->sourceDir, $archive, $format);
+
+        $extractDir = $this->outputDir . '/extracted_' . $format;
+        $this->engine->extract($archive, $extractDir, $format);
+
+        $baseName = basename($this->sourceDir);
+
+        expect(file_get_contents("{$extractDir}/{$baseName}/hello.txt"))
+            ->toBe(file_get_contents($this->sourceDir . '/hello.txt'))
+            ->and(file_get_contents("{$extractDir}/{$baseName}/subdir/nested.txt"))
+            ->toBe(file_get_contents($this->sourceDir . '/subdir/nested.txt'));
+    })->with(['gz', 'zst', 'bz2']);
+
+    it('extracts with stripComponents removing leading path segments', function () {
+        $archive = $this->outputDir . '/strip.tar.gz';
+        $this->engine->compress($this->sourceDir, $archive);
+
+        $extractDir = $this->outputDir . '/extracted_stripped';
+        // strip 1: drops the source dir's own basename component
+        $this->engine->extract($archive, $extractDir, 'gz', 1);
+
+        expect(is_file("{$extractDir}/hello.txt"))->toBeTrue();
+    });
+
+    it('extract creates the output directory when missing', function () {
+        $archive = $this->outputDir . '/create_dir.tar.gz';
+        $this->engine->compress($this->sourceDir, $archive);
+
+        $extractDir = $this->outputDir . '/does_not_exist_yet';
+
+        expect(is_dir($extractDir))->toBeFalse();
+
+        $this->engine->extract($archive, $extractDir, 'gz');
+
+        expect(is_dir($extractDir))->toBeTrue();
+    });
+
+    it('extract throws TarException for a nonexistent archive', function () {
+        expect(fn () => $this->engine->extract($this->outputDir . '/missing.tar.gz', $this->outputDir . '/out', 'gz'))
+            ->toThrow(TarException::class);
+    });
+
+    it('extract invokes the progress callback with filenames', function () {
+        $archive = $this->outputDir . '/progress.tar.gz';
+        $this->engine->compress($this->sourceDir, $archive);
+
+        $seen = [];
+        $this->engine->extract($archive, $this->outputDir . '/progress_out', 'gz', 0, [], function (string $line) use (&$seen) {
+            $seen[] = $line;
+        });
+
+        expect($seen)->not->toBeEmpty();
+    });
+
+    // -------------------------------------------------------------------------
+    // listContents()
+    // -------------------------------------------------------------------------
+
+    it('buildListArgv uses -tf and the decompress program', function () {
+        $cmd = implode(' ', $this->engine->buildListArgv('/tmp/a.tar.gz', 'gz'));
+
+        expect($cmd)->toContain('-tf')
+            ->and($cmd)->toContain('/tmp/a.tar.gz')
+            ->and($cmd)->toContain('--use-compress-program=gzip');
+    });
+
+    it('lists the member paths of a compressed archive', function () {
+        $archive = $this->outputDir . '/list.tar.gz';
+        $this->engine->compress($this->sourceDir, $archive);
+
+        $entries  = $this->engine->listContents($archive, 'gz');
+        $baseName = basename($this->sourceDir);
+
+        expect($entries)->toContain("{$baseName}/hello.txt")
+            ->and($entries)->toContain("{$baseName}/subdir/nested.txt");
+    });
+
+    it('listContents throws TarException for a nonexistent archive', function () {
+        expect(fn () => $this->engine->listContents($this->outputDir . '/missing.tar.gz', 'gz'))
+            ->toThrow(TarException::class);
+    });
+
+    // -------------------------------------------------------------------------
+    // compress() — progress callback
+    // -------------------------------------------------------------------------
+
+    it('compress invokes the progress callback with filenames and still produces the archive', function () {
+        $output = $this->outputDir . '/progress_compress.tar.gz';
+        $seen   = [];
+
+        $this->engine->compress($this->sourceDir, $output, 'gz', [], function (string $line) use (&$seen) {
+            $seen[] = $line;
+        });
+
+        expect($seen)->not->toBeEmpty()
+            ->and(is_file($output))->toBeTrue();
+    });
+
+    it('buildArgv appends -v only when verbose is true, default argv is unchanged', function () {
+        $withoutVerbose = implode(' ', $this->engine->buildArgv($this->sourceDir, '/tmp/out.tar.gz', 'gz'));
+        $withVerbose    = implode(' ', $this->engine->buildArgv($this->sourceDir, '/tmp/out.tar.gz', 'gz', [], null, true));
+
+        expect($withoutVerbose)->not->toContain(' -v')
+            ->and($withVerbose)->toContain(' -v');
     });
 
 });

@@ -1,6 +1,8 @@
 # Tar Compression
 
-`CompressTar` compresses files and directories into `.tar.gz` or `.tar.zst` archives. It wraps the system `tar` binary and returns a `float` representing the ratio of size reduction.
+`CompressTar` compresses files and directories into `.tar.gz`, `.tar.zst` or `.tar.bz2` archives. It wraps the system `tar` binary and returns a `float` representing the ratio of size reduction.
+
+To read archives back, see [Extracting Archives](#extracting-archives) and [Listing Archive Contents](#listing-archive-contents) below — those use the separate `ExtractTar` class.
 
 ## Basic Usage
 
@@ -24,12 +26,29 @@ When `$outputPath` does not end with the archive extension, a timestamped filena
 ```php
 $optimizer->withFormat('gz');   // .tar.gz via gzip (default)
 $optimizer->withFormat('zst');  // .tar.zst via zstd
+$optimizer->withFormat('bz2');  // .tar.bz2 via bzip2
 ```
 
 ## Compression Level
 
 ```php
-$optimizer->withCompressionLevel(9); // 1–9 for gz, 1–19 for zst (default: 6)
+$optimizer->withCompressionLevel(9); // default: 6
+```
+
+Validated against the current format's range and throws `\InvalidArgumentException` when out of bounds:
+
+| Format | Range |
+|---|---|
+| `gz`  | 1–9 |
+| `zst` | 1–19 |
+| `bz2` | 1–9 |
+
+Since format and level can be set in either order, both `withFormat()` and `withCompressionLevel()` validate against
+whichever of the two is currently known:
+
+```php
+$optimizer->withCompressionLevel(15); // throws: 15 is out of range for the default 'gz' format
+$optimizer->withFormat('zst')->withCompressionLevel(15); // OK — valid for zst
 ```
 
 ## Parallel Threads (zst only)
@@ -105,6 +124,85 @@ $optimizer->cleanDirectory('/backups/', 10);
 ```
 
 Both `.tar.gz` and `.tar.zst` files are counted together. Passing `0` removes all archives.
+
+## Progress Callback
+
+Receive one filename per line of `tar -v` output as files are added to the archive:
+
+```php
+$optimizer
+    ->withProgress(fn (string $line) => fwrite(STDERR, "added: {$line}\n"))
+    ->optimize('/path/to/dir', '/output/archive.tar.gz');
+```
+
+Leaving it unset (the default) keeps the generated `tar` command byte-identical to a call without it.
+
+## Extracting Archives
+
+`ExtractTar` reads existing archives back — kept as a separate class from `CompressTar` since extraction has no
+size-reduction ratio to report:
+
+```php
+use GomdimApps\Slimmer\Optimizers\ExtractTar;
+
+$extracted = (new ExtractTar())->extract('/path/to/archive.tar.gz', '/path/to/output-dir');
+// string[] — absolute paths of every extracted file
+```
+
+The format is auto-detected from the archive's magic bytes, falling back to its file extension. Pass `withFormat()`
+to skip detection:
+
+```php
+(new ExtractTar())->withFormat('bz2')->extract('/path/to/archive', '/output-dir');
+```
+
+### Strip Path Components
+
+Mirrors GNU tar's `--strip-components`:
+
+```php
+// archive.tar.gz contains "myproject/src/App.php" -> extracted as "src/App.php"
+(new ExtractTar())->withStripComponents(1)->extract('/path/to/archive.tar.gz', '/output-dir');
+```
+
+### Exclude Patterns on Extraction
+
+```php
+(new ExtractTar())->withExclude('*.log')->extract('/path/to/archive.tar.gz', '/output-dir');
+```
+
+Selecting only specific members to extract (include patterns) is not yet supported — extract the full archive and
+filter the returned paths, or use `withExtraArgs`-style raw member arguments via a custom `TarEngine` call.
+
+### Progress Callback
+
+```php
+(new ExtractTar())
+    ->withProgress(fn (string $line) => fwrite(STDERR, "extracted: {$line}\n"))
+    ->extract('/path/to/archive.tar.gz', '/output-dir');
+```
+
+### Dry Run
+
+```php
+$command = (new ExtractTar())->dryRun('/path/to/archive.tar.gz', '/output-dir');
+// tar --use-compress-program=gzip -xf /path/to/archive.tar.gz -C /output-dir
+```
+
+`dryRun()` performs no filesystem writes — the output directory is not created.
+
+## Listing Archive Contents
+
+List an archive's member paths without extracting it:
+
+```php
+$paths = (new ExtractTar())->listContents('/path/to/archive.tar.gz');
+// string[] — one member path per archive entry
+```
+
+This is intentionally a plain list of paths, not a rich per-entry metadata object (size/mtime/permissions) — GNU
+tar's verbose listing format is comparatively fragile to parse reliably across tar versions and locales. If you need
+that metadata, `TarEngine::buildListArgv()` gives you the base command to extend with `-v` yourself.
 
 ## Custom tar Binary
 

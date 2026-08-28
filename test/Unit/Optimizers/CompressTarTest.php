@@ -93,8 +93,12 @@ describe('CompressTar', function () {
         expect($this->optimizer->withFormat('zst'))->toBe($this->optimizer);
     });
 
+    it('withFormat accepts bz2', function () {
+        expect($this->optimizer->withFormat('bz2'))->toBe($this->optimizer);
+    });
+
     it('withFormat throws InvalidArgumentException for an unknown format', function () {
-        expect(fn () => $this->optimizer->withFormat('bz2'))
+        expect(fn () => $this->optimizer->withFormat('rar'))
             ->toThrow(\InvalidArgumentException::class);
     });
 
@@ -503,6 +507,82 @@ describe('CompressTar', function () {
         );
 
         expect($remaining)->toBeEmpty();
+    });
+
+    it('cleanDirectory counts .tar.bz2 files together with .tar.gz and .tar.zst', function () {
+        file_put_contents($this->outputDir . '/a.tar.gz',  'gz');
+        file_put_contents($this->outputDir . '/b.tar.bz2', 'bz2');
+        touch($this->outputDir . '/a.tar.gz',  time() - 100);
+        touch($this->outputDir . '/b.tar.bz2', time());
+
+        $this->optimizer->cleanDirectory($this->outputDir, 1);
+
+        expect(is_file($this->outputDir . '/b.tar.bz2'))->toBeTrue()
+            ->and(is_file($this->outputDir . '/a.tar.gz'))->toBeFalse();
+    });
+
+    // -------------------------------------------------------------------------
+    // .tar.bz2 format
+    // -------------------------------------------------------------------------
+
+    it('optimize creates a .tar.bz2 archive', function () {
+        $output = $this->outputDir . '/archive.tar.bz2';
+        $ratio  = $this->optimizer->withFormat('bz2')->optimize($this->sourceDir, $output);
+
+        expect(is_file($output))->toBeTrue()
+            ->and($ratio)->toBeFloat();
+    });
+
+    it('dryRun contains the bzip2 compress program for bz2 format', function () {
+        $cmd = $this->optimizer->withFormat('bz2')
+            ->dryRun($this->sourceDir, $this->outputDir . '/out.tar.bz2');
+
+        expect($cmd)->toContain('bzip2');
+    });
+
+    // -------------------------------------------------------------------------
+    // Compression-level validation
+    // -------------------------------------------------------------------------
+
+    it('withCompressionLevel validates against the current format', function () {
+        expect(fn () => $this->optimizer->withCompressionLevel(15))
+            ->toThrow(\InvalidArgumentException::class); // default format is gz, max 9
+    });
+
+    it('withCompressionLevel accepts a level valid for the current format', function () {
+        expect($this->optimizer->withFormat('zst')->withCompressionLevel(15))->toBe($this->optimizer);
+    });
+
+    it('withFormat re-validates the already-configured compression level', function () {
+        $this->optimizer->withCompressionLevel(9); // valid for gz (default)
+
+        expect(fn () => $this->optimizer->withFormat('zst')->withCompressionLevel(9)->withFormat('gz'))
+            ->not->toThrow(\InvalidArgumentException::class);
+    });
+
+    it('withFormat throws when switching to a format the current level does not fit', function () {
+        $this->optimizer->withFormat('zst')->withCompressionLevel(15); // only valid for zst
+
+        expect(fn () => $this->optimizer->withFormat('gz'))
+            ->toThrow(\InvalidArgumentException::class);
+    });
+
+    // -------------------------------------------------------------------------
+    // withProgress()
+    // -------------------------------------------------------------------------
+
+    it('withProgress returns the same instance', function () {
+        expect($this->optimizer->withProgress(function () {}))->toBe($this->optimizer);
+    });
+
+    it('withProgress invokes the callback while compressing', function () {
+        $seen = [];
+
+        $this->optimizer
+            ->withProgress(function (string $line) use (&$seen) { $seen[] = $line; })
+            ->optimize($this->sourceDir, $this->outputDir . '/progress.tar.gz');
+
+        expect($seen)->not->toBeEmpty();
     });
 
 });

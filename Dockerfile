@@ -5,6 +5,9 @@ FROM php:8.4-cli-alpine
 RUN apk add --no-cache \
         ghostscript \
         zstd \
+        bzip2 \
+        zip \
+        unzip \
         freetype \
         libjpeg-turbo \
         libpng \
