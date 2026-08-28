@@ -7,6 +7,7 @@ namespace GomdimApps\Slimmer\Optimizers;
 use GomdimApps\Slimmer\Contracts\Optimizer;
 use GomdimApps\Slimmer\Engines\GhostscriptEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
+use GomdimApps\Slimmer\Optimizers\Utils\Pdf\PdfAdvancedArgsBuilder;
 use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
 use GomdimApps\Slimmer\Traits\OptimizationIO;
 
@@ -298,44 +299,20 @@ class PdfOptimizer implements Optimizer
 
     /**
      * Translate the advanced-compression fluent state into raw Ghostscript flags.
-     * Returns [] when no advanced method has been called, keeping the default
-     * command identical to the pre-advanced-options behavior.
+     * Delegates to PdfAdvancedArgsBuilder so the translation logic lives outside this class.
      */
     private function buildAdvancedArgs(): array
     {
-        $args = [];
-
-        if ($this->autoRotatePages !== null) {
-            $args[] = '-dAutoRotatePages=/' . $this->autoRotatePages;
-        }
-
-        if ($this->detectDuplicateImages !== null) {
-            $args[] = '-dDetectDuplicateImages=' . ($this->detectDuplicateImages ? 'true' : 'false');
-        }
-
-        if ($this->imageDownsampleDpi !== null) {
-            foreach (['Color', 'Gray'] as $channel) {
-                $args[] = "-dDownsample{$channel}Images=true";
-                $args[] = "-d{$channel}ImageResolution=" . $this->imageDownsampleDpi;
-                $args[] = "-d{$channel}ImageDownsampleType=/" . $this->imageDownsampleType;
-                $args[] = "-d{$channel}ImageDownsampleThreshold=" . $this->imageDownsampleThreshold;
-            }
-        }
-
-        if ($this->objectStreamCompression) {
-            $args[] = '-dWriteObjStms=true';
-            $args[] = '-dWriteXRefStm=true';
-        }
-
-        if ($this->streamEffort !== null) {
-            $args[] = '-dStreamEffort=' . $this->streamEffort;
-        }
-
-        if ($this->fastWebView) {
-            $args[] = '-dFastWebView=true';
-        }
-
-        return $args;
+        return PdfAdvancedArgsBuilder::build(
+            $this->autoRotatePages,
+            $this->detectDuplicateImages,
+            $this->imageDownsampleDpi,
+            $this->imageDownsampleType,
+            $this->imageDownsampleThreshold,
+            $this->objectStreamCompression,
+            $this->streamEffort,
+            $this->fastWebView
+        );
     }
 
 }

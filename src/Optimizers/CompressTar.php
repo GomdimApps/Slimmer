@@ -8,6 +8,7 @@ use GomdimApps\Slimmer\Contracts\Optimizer;
 use GomdimApps\Slimmer\Engines\TarEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 use GomdimApps\Slimmer\Exceptions\TarException;
+use GomdimApps\Slimmer\Optimizers\Utils\Tar\TarArgsBuilder;
 use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
 use GomdimApps\Slimmer\Traits\SourceFiles;
 
@@ -308,18 +309,13 @@ class CompressTar implements Optimizer
 
     /**
      * Build the per-call extra arguments derived from active flags.
+     * Delegates to TarArgsBuilder so the translation logic lives outside this class.
      *
      * @return string[]
      */
     private function buildExtraArgs(): array
     {
-        $args = [];
-
-        if ($this->preservePermissions) {
-            $args[] = '-p';
-        }
-
-        return $args;
+        return TarArgsBuilder::build($this->preservePermissions);
     }
 
     /** @throws SlimmerException */
