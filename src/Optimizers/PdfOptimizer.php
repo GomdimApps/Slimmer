@@ -18,6 +18,15 @@ class PdfOptimizer implements Optimizer
     use InteractsWithTemporaryInput;
     use OptimizationIO;
 
+    /** Allowed values for withQuality() */
+    private const QUALITY_PRESETS = ['screen', 'ebook', 'printer', 'prepress', 'default'];
+
+    /** Allowed values for withImageDownsampling()'s $type */
+    private const DOWNSAMPLE_TYPES = ['Subsample', 'Average', 'Bicubic'];
+
+    /** Allowed values for withAutoRotatePages()'s $mode */
+    private const AUTO_ROTATE_MODES = ['None', 'All', 'PageByPage'];
+
     /** Ghostscript PDFSETTINGS preset */
     private string $quality = 'ebook';
 
@@ -26,6 +35,30 @@ class PdfOptimizer implements Optimizer
 
     /** Additional raw Ghostscript arguments */
     private array $extraArgs = [];
+
+    /** -dDetectDuplicateImages, null = leave Ghostscript's own default */
+    private ?bool $detectDuplicateImages = null;
+
+    /** Target DPI for Color/Gray image downsampling, null = disabled */
+    private ?int $imageDownsampleDpi = null;
+
+    /** -d{Color,Gray}ImageDownsampleType */
+    private string $imageDownsampleType = 'Bicubic';
+
+    /** -d{Color,Gray}ImageDownsampleThreshold */
+    private float $imageDownsampleThreshold = 1.5;
+
+    /** -dWriteObjStms / -dWriteXRefStm */
+    private bool $objectStreamCompression = false;
+
+    /** -dStreamEffort, null = leave Ghostscript's own default (5) */
+    private ?int $streamEffort = null;
+
+    /** -dFastWebView */
+    private bool $fastWebView = false;
+
+    /** -dAutoRotatePages, null = leave Ghostscript's own default */
+    private ?string $autoRotatePages = null;
 
     public function __construct(private readonly GhostscriptEngine $engine = new GhostscriptEngine())
     {
@@ -41,11 +74,9 @@ class PdfOptimizer implements Optimizer
      */
     public function withQuality(string $preset): static
     {
-        $allowed = ['screen', 'ebook', 'printer', 'prepress', 'default'];
-
-        if (!in_array($preset, $allowed, true)) {
+        if (!in_array($preset, self::QUALITY_PRESETS, true)) {
             throw new \InvalidArgumentException(
-                "Unknown quality preset \"{$preset}\". Allowed: " . implode(', ', $allowed) . '.'
+                "Unknown quality preset \"{$preset}\". Allowed: " . implode(', ', self::QUALITY_PRESETS) . '.'
             );
         }
 
@@ -70,6 +101,133 @@ class PdfOptimizer implements Optimizer
         return $this;
     }
 
+    /**
+     * Deduplicate identical embedded images (e.g. repeated logos/letterheads) with no quality loss.
+     */
+    public function withDetectDuplicateImages(bool $enabled = true): static
+    {
+        $this->detectDuplicateImages = $enabled;
+
+        return $this;
+    }
+
+    /**
+     * Downsample Color and Gray images to a target DPI. Mono images are left untouched
+     * (usually scanned text/line-art, where DPI cuts hurt legibility).
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function withImageDownsampling(int $dpi, string $type = 'Bicubic', float $threshold = 1.5): static
+    {
+        if ($dpi < 1) {
+            throw new \InvalidArgumentException("Image downsample DPI must be >= 1, got {$dpi}.");
+        }
+
+        if (!in_array($type, self::DOWNSAMPLE_TYPES, true)) {
+            throw new \InvalidArgumentException(
+                "Unknown downsample type \"{$type}\". Allowed: " . implode(', ', self::DOWNSAMPLE_TYPES) . '.'
+            );
+        }
+
+        if ($threshold < 1.0) {
+            throw new \InvalidArgumentException("Image downsample threshold must be >= 1.0, got {$threshold}.");
+        }
+
+        $this->imageDownsampleDpi       = $dpi;
+        $this->imageDownsampleType      = $type;
+        $this->imageDownsampleThreshold = $threshold;
+
+        return $this;
+    }
+
+    /**
+     * Enable compressed object/cross-reference streams (-dWriteObjStms / -dWriteXRefStm).
+     * Requires a PDF compatibility level of 1.5 or higher.
+     *
+     * @throws \InvalidArgumentException If the current compatibility level is below 1.5.
+     */
+    public function withObjectStreamCompression(bool $enabled = true): static
+    {
+        if ($enabled && (float) $this->compatibilityLevel < 1.5) {
+            throw new \InvalidArgumentException(
+                'Object/cross-reference stream compression requires a PDF compatibility level of 1.5 or higher '
+                . "(current: \"{$this->compatibilityLevel}\"). Call withCompatibilityLevel('1.5') before "
+                . 'withObjectStreamCompression().'
+            );
+        }
+
+        $this->objectStreamCompression = $enabled;
+
+        return $this;
+    }
+
+    /**
+     * Set the stream compression effort (-dStreamEffort). Lower values (1-3) trade size for speed;
+     * higher values (7-9) trade speed for size. Ghostscript's own default is 5.
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function withStreamEffort(int $effort): static
+    {
+        if ($effort < 1 || $effort > 9) {
+            throw new \InvalidArgumentException("Stream effort must be between 1 and 9, got {$effort}.");
+        }
+
+        $this->streamEffort = $effort;
+
+        return $this;
+    }
+
+    /**
+     * Enable Fast Web View (linearization) for progressive rendering while downloading.
+     * This optimizes for network delivery, not file size — it can slightly increase output size.
+     */
+    public function withFastWebView(bool $enabled = true): static
+    {
+        $this->fastWebView = $enabled;
+
+        return $this;
+    }
+
+    /**
+     * Set page auto-rotation behavior (-dAutoRotatePages). Defaults to 'None' when called,
+     * guarding against Ghostscript's heuristic rotating image-only pages sideways/upside-down.
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function withAutoRotatePages(string $mode = 'None'): static
+    {
+        if (!in_array($mode, self::AUTO_ROTATE_MODES, true)) {
+            throw new \InvalidArgumentException(
+                "Unknown auto-rotate mode \"{$mode}\". Allowed: " . implode(', ', self::AUTO_ROTATE_MODES) . '.'
+            );
+        }
+
+        $this->autoRotatePages = $mode;
+
+        return $this;
+    }
+
+    /**
+     * Convenience bundle of lossless/structural compression improvements: object stream
+     * compression (bumping compatibility level to 1.5 if needed), duplicate image detection,
+     * maximum stream effort, and safe page auto-rotation. Does NOT touch quality/DPI — combine
+     * with withQuality('screen') or withImageDownsampling() for lossy size reduction.
+     */
+    public function withAggressiveCompression(): static
+    {
+        if ((float) $this->compatibilityLevel < 1.5) {
+            $this->compatibilityLevel = '1.5';
+        }
+
+        $this->withObjectStreamCompression();
+        $this->withDetectDuplicateImages(true);
+        $this->withStreamEffort(9);
+        $this->withAutoRotatePages('None');
+
+        return $this;
+    }
+
     // -------------------------------------------------------------------------
     // Optimizer contract
     // -------------------------------------------------------------------------
@@ -90,7 +248,7 @@ class PdfOptimizer implements Optimizer
             $outputPath,
             $this->buildPdfSettings(),
             $this->compatibilityLevel,
-            $this->extraArgs
+            [...$this->buildAdvancedArgs(), ...$this->extraArgs]
         );
 
         if (!is_file($outputPath)) {
@@ -122,7 +280,7 @@ class PdfOptimizer implements Optimizer
             $outputPath,
             $this->buildPdfSettings(),
             $this->compatibilityLevel,
-            $this->extraArgs
+            [...$this->buildAdvancedArgs(), ...$this->extraArgs]
         );
 
         return implode(' ', $argv);
@@ -136,6 +294,48 @@ class PdfOptimizer implements Optimizer
     private function buildPdfSettings(): string
     {
         return '/' . $this->quality;
+    }
+
+    /**
+     * Translate the advanced-compression fluent state into raw Ghostscript flags.
+     * Returns [] when no advanced method has been called, keeping the default
+     * command identical to the pre-advanced-options behavior.
+     */
+    private function buildAdvancedArgs(): array
+    {
+        $args = [];
+
+        if ($this->autoRotatePages !== null) {
+            $args[] = '-dAutoRotatePages=/' . $this->autoRotatePages;
+        }
+
+        if ($this->detectDuplicateImages !== null) {
+            $args[] = '-dDetectDuplicateImages=' . ($this->detectDuplicateImages ? 'true' : 'false');
+        }
+
+        if ($this->imageDownsampleDpi !== null) {
+            foreach (['Color', 'Gray'] as $channel) {
+                $args[] = "-dDownsample{$channel}Images=true";
+                $args[] = "-d{$channel}ImageResolution=" . $this->imageDownsampleDpi;
+                $args[] = "-d{$channel}ImageDownsampleType=/" . $this->imageDownsampleType;
+                $args[] = "-d{$channel}ImageDownsampleThreshold=" . $this->imageDownsampleThreshold;
+            }
+        }
+
+        if ($this->objectStreamCompression) {
+            $args[] = '-dWriteObjStms=true';
+            $args[] = '-dWriteXRefStm=true';
+        }
+
+        if ($this->streamEffort !== null) {
+            $args[] = '-dStreamEffort=' . $this->streamEffort;
+        }
+
+        if ($this->fastWebView) {
+            $args[] = '-dFastWebView=true';
+        }
+
+        return $args;
     }
 
 }
