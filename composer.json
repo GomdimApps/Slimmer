@@ -22,7 +22,7 @@
     "require": {
         "php": ">=8.2",
         "ext-gd": "*",
-        "symfony/process": "^8.0"
+        "symfony/process": "^7.4.5|^8.0.5"
     },
     "require-dev": {
         "pestphp/pest": "^3.0",
