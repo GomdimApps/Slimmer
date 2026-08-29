@@ -6,6 +6,9 @@ COMPOSE  := docker compose
 SERVICE  := test
 FILTER   ?=
 LOG_FILE ?= test.log
+# Run as the host user so bind-mounted files stay host-owned and permission
+# checks (e.g. chmod-based tests) behave as they would outside Docker, not as root.
+RUN_USER := $$(id -u):$$(id -g)
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -18,16 +21,16 @@ build: ## Build (or rebuild) the Docker image
 # Test targets
 test: ## Run the full test suite (builds image if needed), logging output to LOG_FILE (default: test.log)
 	@rm -f $(LOG_FILE)
-	@bash -o pipefail -c '$(COMPOSE) run --rm $(SERVICE) 2>&1 | tee $(LOG_FILE)'
+	@bash -o pipefail -c '$(COMPOSE) run --rm --user "$(RUN_USER)" $(SERVICE) 2>&1 | tee $(LOG_FILE)'
 
 test-filter: ## Run tests matching FILTER=<pattern> (e.g. make test-filter FILTER=PdfOptimizer), logging output to LOG_FILE
 	@rm -f $(LOG_FILE)
-	@bash -o pipefail -c '$(COMPOSE) run --rm $(SERVICE) \
+	@bash -o pipefail -c '$(COMPOSE) run --rm --user "$(RUN_USER)" $(SERVICE) \
 		vendor/bin/pest --configuration phpunit.xml --filter "$(FILTER)" 2>&1 | tee $(LOG_FILE)'
 
 # Dev helpers
 shell: ## Open a bash shell inside the test container
-	$(COMPOSE) run --rm --entrypoint /bin/sh $(SERVICE)
+	$(COMPOSE) run --rm --user "$(RUN_USER)" --entrypoint /bin/sh $(SERVICE)
 
 clean: ## Remove containers, volumes, and the built image
 	$(COMPOSE) down --volumes --rmi local
