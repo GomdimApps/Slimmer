@@ -5,6 +5,7 @@
 COMPOSE  := docker compose
 SERVICE  := test
 FILTER   ?=
+LOG_FILE ?= test.log
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -15,12 +16,14 @@ build: ## Build (or rebuild) the Docker image
 	$(COMPOSE) build --pull $(SERVICE)
 
 # Test targets
-test: ## Run the full test suite (builds image if needed)
-	$(COMPOSE) run --rm $(SERVICE)
+test: ## Run the full test suite (builds image if needed), logging output to LOG_FILE (default: test.log)
+	@rm -f $(LOG_FILE)
+	@bash -o pipefail -c '$(COMPOSE) run --rm $(SERVICE) 2>&1 | tee $(LOG_FILE)'
 
-test-filter: ## Run tests matching FILTER=<pattern>  (e.g. make test-filter FILTER=PdfOptimizer)
-	$(COMPOSE) run --rm $(SERVICE) \
-		vendor/bin/pest --configuration phpunit.xml --filter "$(FILTER)"
+test-filter: ## Run tests matching FILTER=<pattern> (e.g. make test-filter FILTER=PdfOptimizer), logging output to LOG_FILE
+	@rm -f $(LOG_FILE)
+	@bash -o pipefail -c '$(COMPOSE) run --rm $(SERVICE) \
+		vendor/bin/pest --configuration phpunit.xml --filter "$(FILTER)" 2>&1 | tee $(LOG_FILE)'
 
 # Dev helpers
 shell: ## Open a bash shell inside the test container
