@@ -1,27 +1,27 @@
 # Slimmer — PHP 8.4 + Ghostscript (Alpine)
-FROM php:8.4-cli-alpine
+FROM php:8.2-cli-alpine
 
 # System dependencies
 RUN apk add --no-cache \
-        ghostscript \
-        zstd \
-        bzip2 \
-        zip \
-        unzip \
-        freetype \
-        libjpeg-turbo \
-        libpng \
-        libwebp \
+    ghostscript \
+    zstd \
+    bzip2 \
+    zip \
+    unzip \
+    freetype \
+    libjpeg-turbo \
+    libpng \
+    libwebp \
     && apk add --no-cache --virtual .build-deps \
-        freetype-dev \
-        libjpeg-turbo-dev \
-        libpng-dev \
-        libwebp-dev \
+    freetype-dev \
+    libjpeg-turbo-dev \
+    libpng-dev \
+    libwebp-dev \
     # GD extension
     && docker-php-ext-configure gd \
-        --with-freetype \
-        --with-jpeg \
-        --with-webp \
+    --with-freetype \
+    --with-jpeg \
+    --with-webp \
     && docker-php-ext-install -j"$(nproc)" gd \
     && apk del .build-deps \
     && rm -rf /var/cache/apk/*
