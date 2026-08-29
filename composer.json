@@ -1,14 +1,41 @@
 {
     "name": "gomdim-apps/slimmer",
-    "description": "PDF, image, and file compressor (Tar/Zstd) using Ghostscript and GD",
+    "description": "PDF, image, and archive (Tar/Zip) compressor and extractor using Ghostscript, GD, tar and zip",
     "type": "library",
+    "keywords": [
+        "pdf",
+        "pdf-compression",
+        "pdf-optimizer",
+        "image-compression",
+        "image-optimizer",
+        "ghostscript",
+        "compression",
+        "compressor",
+        "file-compression",
+        "archive",
+        "archiving",
+        "tar",
+        "zip",
+        "gzip",
+        "zstd",
+        "bzip2",
+        "backup",
+        "retention",
+        "gd"
+    ],
     "license": "MIT",
+    "homepage": "https://gomdimapps.github.io/Slimmer",
     "authors": [
         {
             "name": "isac Gondim",
             "email": "isac.gondim.dev@gmail.com"
         }
     ],
+    "support": {
+        "issues": "https://github.com/GomdimApps/Slimmer/issues",
+        "source": "https://github.com/GomdimApps/Slimmer",
+        "docs": "https://gomdimapps.github.io/Slimmer"
+    },
     "autoload": {
         "psr-4": {
             "GomdimApps\\Slimmer\\": "src/"
