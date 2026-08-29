@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace GomdimApps\Slimmer\Traits;
 
-use GomdimApps\Slimmer\Exceptions\TarException;
+use GomdimApps\Slimmer\Exceptions\SlimmerException;
 
 /**
  * File and directory operations for source-consuming optimizers.
  *
  * Provides recursive size calculation and safe deletion of source files /
- * directories used by CompressTar's retain strategies.
+ * directories used by CompressTar's and CompressZip's retention strategies.
+ * Deletion failures are reported via the consuming class's own exception type
+ * (see throwDeletionFailedException()), since this trait is shared by both.
  */
 trait SourceFiles
 {
@@ -41,13 +43,13 @@ trait SourceFiles
     /**
      * Delete a source file or directory (recursive).
      *
-     * @throws TarException
+     * @throws SlimmerException
      */
     private function deleteSource(string $path): void
     {
         if (is_file($path)) {
             if (!@unlink($path)) {
-                throw TarException::deletionFailed($path, error_get_last()['message'] ?? '');
+                $this->throwDeletionFailedException($path, error_get_last()['message'] ?? '');
             }
 
             return;
@@ -61,7 +63,7 @@ trait SourceFiles
     /**
      * Recursively delete a directory and all its contents (children first).
      *
-     * @throws TarException
+     * @throws SlimmerException
      */
     private function deleteDirectory(string $directory): void
     {
@@ -74,17 +76,24 @@ trait SourceFiles
             /** @var \SplFileInfo $item */
             if ($item->isDir()) {
                 if (!@rmdir($item->getPathname())) {
-                    throw TarException::deletionFailed($item->getPathname(), error_get_last()['message'] ?? '');
+                    $this->throwDeletionFailedException($item->getPathname(), error_get_last()['message'] ?? '');
                 }
             } else {
                 if (!@unlink($item->getPathname())) {
-                    throw TarException::deletionFailed($item->getPathname(), error_get_last()['message'] ?? '');
+                    $this->throwDeletionFailedException($item->getPathname(), error_get_last()['message'] ?? '');
                 }
             }
         }
 
         if (!@rmdir($directory)) {
-            throw TarException::deletionFailed($directory, error_get_last()['message'] ?? '');
+            $this->throwDeletionFailedException($directory, error_get_last()['message'] ?? '');
         }
     }
+
+    /**
+     * Throw the consuming class's own "deletion failed" exception (e.g.
+     * TarException::deletionFailed() for CompressTar, ZipException::deletionFailed()
+     * for CompressZip), so a caller catching that specific subtype sees this failure.
+     */
+    abstract protected function throwDeletionFailedException(string $path, string $reason): never;
 }

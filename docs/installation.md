@@ -7,8 +7,10 @@
 | **PHP** | >= 8.2 |
 | **PHP Extension** | `ext-gd` |
 | **Ghostscript** (`gs`) | Any recent version |
-| **tar** | System binary (for Tar compression) |
+| **tar** | System binary (for Tar compression/extraction) |
 | **zstd** | Required only for `.tar.zst` archives |
+| **bzip2** | Required only for `.tar.bz2` archives |
+| **zip** / **unzip** | Required only for Zip compression/extraction |
 
 ## Install via Composer
 

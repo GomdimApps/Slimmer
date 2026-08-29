@@ -7,7 +7,8 @@ namespace GomdimApps\Slimmer\Traits;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 
 /**
- * Shared I/O validation for file-based optimizers (PDF, image).
+ * Shared I/O validation for file-based optimizers/archivers (PDF, image,
+ * tar/zip extraction).
  *
  * Requires the input to be a regular file and the output parent directory
  * to exist and be writable.

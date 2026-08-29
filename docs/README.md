@@ -10,7 +10,8 @@
 
 - **PDF optimization** — reduce file size with Ghostscript quality presets
 - **Image compression** — JPG & PNG with configurable quality and dimensions
-- **Tar archiving** — `.tar.gz` or `.tar.zst` with retention management
+- **Tar archiving** — `.tar.gz`, `.tar.zst` or `.tar.bz2`, with extraction, listing and retention management
+- **Zip archiving** — `.zip` compression and extraction
 - **In-memory I/O** — pass strings or streams instead of files
 - **Dry-run support** — inspect commands before executing
 - **Timeout control** — prevent runaway processes
@@ -42,5 +43,6 @@ echo round($ratio * 100, 2) . '% reduced';
 - [Image Optimizer](image-optimizer.md)
 - [Streams & Buffers](streams-buffers.md)
 - [Tar Compression](tar-compression.md)
+- [Zip Compression](zip-compression.md)
 - [Error Handling](error-handling.md)
 - [Troubleshooting](troubleshooting.md)

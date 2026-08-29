@@ -7,7 +7,8 @@ All exceptions thrown by Slimmer extend `SlimmerException`, so you can catch the
 ```
 \Exception
   └── SlimmerException          (GomdimApps\Slimmer\Exceptions\SlimmerException)
-        └── TarException        (GomdimApps\Slimmer\Exceptions\TarException)
+        ├── TarException        (GomdimApps\Slimmer\Exceptions\TarException)
+        └── ZipException        (GomdimApps\Slimmer\Exceptions\ZipException)
 ```
 
 ## SlimmerException
@@ -35,7 +36,10 @@ try {
 Extends `SlimmerException`. Thrown for tar-specific failures:
 
 - Compression command failed
+- Extraction command failed (`ExtractTar::extract()`)
+- Listing command failed (`ExtractTar::listContents()`)
 - Unsupported archive format
+- Archive format could not be auto-detected (`ExtractTar` without `withFormat()`)
 - Source deletion failure (in `compressAndRetain`)
 - Retention cleanup failure (in `cleanDirectory`)
 
@@ -52,5 +56,26 @@ try {
 } catch (SlimmerException $e) {
     // binary not found, path issues, etc.
     echo 'Slimmer error: ' . $e->getMessage();
+}
+```
+
+## ZipException
+
+Extends `SlimmerException`. Thrown for zip-specific failures, mirroring `TarException`:
+
+- Compression command failed
+- Extraction command failed (`ExtractZip::extract()`)
+- Listing command failed (`ExtractZip::listContents()`)
+- Source deletion failure (in `compressAndRetain`)
+- Retention cleanup failure (in `cleanDirectory`)
+
+```php
+use GomdimApps\Slimmer\Exceptions\ZipException;
+use GomdimApps\Slimmer\Optimizers\CompressZip;
+
+try {
+    $ratio = (new CompressZip())->optimize('/path/to/dir', '/output/');
+} catch (ZipException $e) {
+    echo 'Zip error: ' . $e->getMessage();
 }
 ```

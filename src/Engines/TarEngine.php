@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace GomdimApps\Slimmer\Engines;
 
 use GomdimApps\Slimmer\Exceptions\TarException;
+use GomdimApps\Slimmer\Support\CompressionLevelValidator;
 use GomdimApps\Slimmer\Traits\Binary;
+use GomdimApps\Slimmer\Traits\ProcessExecution;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
@@ -17,11 +19,26 @@ use Symfony\Component\Process\Process;
 class TarEngine
 {
     use Binary;
+    use ProcessExecution;
 
-    private const SUPPORTED_FORMATS = ['gz', 'zst'];
+    public const SUPPORTED_FORMATS = ['gz', 'zst', 'bz2'];
+
+    /** Valid compression-level range per format: [min, max]. */
+    public const LEVEL_RANGES = [
+        'gz'  => [1, 9],
+        'zst' => [1, 19],
+        'bz2' => [1, 9],
+    ];
+
+    /** File extension per format. */
+    public const EXTENSIONS = [
+        'gz'  => '.tar.gz',
+        'zst' => '.tar.zst',
+        'bz2' => '.tar.bz2',
+    ];
 
     /** Resolved absolute path to the tar binary. */
-    private string $binary;
+    private readonly string $binary;
 
     /** Execution timeout in seconds (0 = no timeout). */
     private float $timeout = 0;
@@ -149,10 +166,13 @@ class TarEngine
      * When $outputPath does not end with the format's extension (.tar.gz or
      * .tar.zst), a timestamped filename is auto-generated inside that path.
      *
-     * @param string   $inputPath  Absolute path to the source file or directory.
-     * @param string   $outputPath Absolute path to the archive or target directory.
-     * @param string   $format     'gz' (.tar.gz) or 'zst' (.tar.zst).
-     * @param string[] $extraArgs  Additional one-off arguments for this call only.
+     * @param string        $inputPath   Absolute path to the source file or directory.
+     * @param string        $outputPath  Absolute path to the archive or target directory.
+     * @param string        $format      'gz' (.tar.gz), 'zst' (.tar.zst) or 'bz2' (.tar.bz2).
+     * @param string[]      $extraArgs   Additional one-off arguments for this call only.
+     * @param callable|null $onProgress  Called with one filename per line of `-v` output as
+     *                                   files are added, when given. Leaving this null keeps
+     *                                   the command byte-identical to a call without it.
      *
      * @throws TarException
      */
@@ -160,7 +180,8 @@ class TarEngine
         string $inputPath,
         string $outputPath,
         string $format = 'gz',
-        array $extraArgs = []
+        array $extraArgs = [],
+        ?callable $onProgress = null
     ): void {
         $this->validateFormat($format);
 
@@ -171,9 +192,9 @@ class TarEngine
             $fileList = $this->buildNonEmptyFileList($inputPath);
         }
 
-        $argv = $this->buildArgv($inputPath, $resolvedOutputPath, $format, $extraArgs, $fileList);
+        $argv = $this->buildArgv($inputPath, $resolvedOutputPath, $format, $extraArgs, $fileList, $onProgress !== null);
 
-        $this->execute($argv, $fileList);
+        $this->execute($argv, $fileList, $onProgress);
     }
 
     /**
@@ -189,7 +210,7 @@ class TarEngine
      */
     public function resolveOutputPath(string $inputPath, string $outputPath, string $format): string
     {
-        $extension = $format === 'zst' ? '.tar.zst' : '.tar.gz';
+        $extension = self::EXTENSIONS[$format] ?? '.tar.gz';
 
         if (str_ends_with($outputPath, $extension)) {
             return $outputPath;
@@ -207,9 +228,11 @@ class TarEngine
      *
      * @param string        $inputPath   Source file or directory.
      * @param string        $outputPath  Already-resolved archive path.
-     * @param string        $format      'gz' or 'zst'.
+     * @param string        $format      'gz', 'zst' or 'bz2'.
      * @param string[]      $extraArgs   Per-call extra arguments.
      * @param string[]|null $fileList    When not null, file paths are piped to stdin (-T -).
+     * @param bool          $verbose     Append -v (one filename per line of output). Defaults to
+     *                                   false so existing 4-arg call sites produce identical argv.
      *
      * @return string[]
      */
@@ -218,7 +241,8 @@ class TarEngine
         string $outputPath,
         string $format,
         array $extraArgs = [],
-        ?array $fileList = null
+        ?array $fileList = null,
+        bool $verbose = false
     ): array {
         $argv = [
             $this->binary,
@@ -251,7 +275,142 @@ class TarEngine
             $argv[] = basename($inputPath);
         }
 
+        if ($verbose) {
+            $argv[] = '-v';
+        }
+
         return $argv;
+    }
+
+    /**
+     * Extract an archive to $outputDir.
+     *
+     * @param string        $archivePath     Absolute path to the archive to extract.
+     * @param string        $outputDir       Absolute path to extract into (created if missing).
+     * @param string        $format          'gz', 'zst' or 'bz2'.
+     * @param int           $stripComponents Number of leading path components to strip, like
+     *                                       GNU tar's --strip-components (0 = keep full paths).
+     * @param string[]      $extraArgs       Additional one-off arguments for this call only.
+     * @param callable|null $onProgress      Called with one filename per line of `-v` output.
+     *
+     * @throws TarException
+     */
+    public function extract(
+        string $archivePath,
+        string $outputDir,
+        string $format,
+        int $stripComponents = 0,
+        array $extraArgs = [],
+        ?callable $onProgress = null
+    ): void {
+        $this->validateFormat($format);
+
+        if (!is_dir($outputDir) && !@mkdir($outputDir, 0777, true) && !is_dir($outputDir)) {
+            throw new TarException("Could not create output directory \"{$outputDir}\".");
+        }
+
+        $argv = $this->buildExtractArgv(
+            $archivePath,
+            $outputDir,
+            $format,
+            $stripComponents,
+            $extraArgs,
+            $onProgress !== null
+        );
+
+        $this->execute($argv, null, $onProgress, 'extractionFailed');
+    }
+
+    /**
+     * Build the argv array for extracting an archive.
+     *
+     * @param string[] $extraArgs Per-call extra arguments.
+     *
+     * @return string[]
+     */
+    public function buildExtractArgv(
+        string $archivePath,
+        string $outputDir,
+        string $format,
+        int $stripComponents = 0,
+        array $extraArgs = [],
+        bool $verbose = false
+    ): array {
+        $argv = [
+            $this->binary,
+            '--use-compress-program=' . $this->buildDecompressProgram($format),
+            '-xf',
+            $archivePath,
+            '-C',
+            $outputDir,
+        ];
+
+        if ($stripComponents > 0) {
+            $argv[] = "--strip-components={$stripComponents}";
+        }
+
+        foreach ($this->excludePatterns as $pattern) {
+            $argv[] = '--exclude=' . $pattern;
+        }
+
+        foreach ($extraArgs as $arg) {
+            $argv[] = $arg;
+        }
+
+        if ($verbose) {
+            $argv[] = '-v';
+        }
+
+        return $argv;
+    }
+
+    /**
+     * List the member paths contained in an archive, without extracting it.
+     *
+     * @return string[] Member paths, one per archive entry, in archive order.
+     *
+     * @throws TarException
+     */
+    public function listContents(string $archivePath, string $format): array
+    {
+        $this->validateFormat($format);
+
+        $argv    = $this->buildListArgv($archivePath, $format);
+        $process = new Process($argv);
+        $process->setTimeout($this->timeout > 0 ? $this->timeout : null);
+
+        try {
+            $process->run();
+        } catch (ProcessTimedOutException) {
+            throw new TarException('Tar process timed out after ' . $this->timeout . ' seconds.');
+        }
+
+        if (!$process->isSuccessful()) {
+            throw TarException::listingFailed(
+                implode(' ', $argv),
+                $process->getExitCode() ?? 1,
+                trim($process->getErrorOutput())
+            );
+        }
+
+        $lines = preg_split('/\R/', trim($process->getOutput()));
+
+        return $lines === [''] ? [] : $lines;
+    }
+
+    /**
+     * Build the argv array for listing an archive's contents.
+     *
+     * @return string[]
+     */
+    public function buildListArgv(string $archivePath, string $format): array
+    {
+        return [
+            $this->binary,
+            '--use-compress-program=' . $this->buildDecompressProgram($format),
+            '-tf',
+            $archivePath,
+        ];
     }
 
     // -------------------------------------------------------------------------
@@ -262,13 +421,36 @@ class TarEngine
      * Build the --use-compress-program value for the given format.
      *
      * @throws TarException
+     * @throws \InvalidArgumentException If the configured compression level is out of range for $format.
      */
     private function buildCompressProgram(string $format): string
     {
+        $this->validateFormat($format);
+
+        CompressionLevelValidator::assertInRange($this->compressionLevel, self::LEVEL_RANGES[$format], $format);
+
         return match ($format) {
             'gz'  => "gzip -{$this->compressionLevel}",
             'zst' => "zstd -{$this->compressionLevel} -T{$this->threads}",
-            default => throw TarException::unsupportedFormat($format),
+            'bz2' => "bzip2 -{$this->compressionLevel}",
+        };
+    }
+
+    /**
+     * Build the --use-compress-program value used to decompress (extract/list) the given format.
+     * Deliberately separate from buildCompressProgram(): the compression level/thread count are
+     * meaningless on the read path, and GNU tar appends -d to this value itself.
+     *
+     * @throws TarException
+     */
+    private function buildDecompressProgram(string $format): string
+    {
+        $this->validateFormat($format);
+
+        return match ($format) {
+            'gz'  => 'gzip',
+            'zst' => 'zstd',
+            'bz2' => 'bzip2',
         };
     }
 
@@ -300,35 +482,31 @@ class TarEngine
     }
 
     /**
-     * Execute the tar subprocess, optionally piping $fileList to stdin.
+     * Execute the tar subprocess, optionally piping $fileList to stdin and/or
+     * streaming each output line to $onProgress.
      *
      * @param string[]      $argv
      * @param string[]|null $fileList
+     * @param callable|null $onProgress     Called with one filename per emitted line.
+     * @param string        $failureFactory Name of the TarException factory to use on failure
+     *                                      ('compressionFailed', 'extractionFailed', ...).
      *
      * @throws TarException
      */
-    private function execute(array $argv, ?array $fileList = null): void
-    {
-        $process = new Process($argv);
-        $process->setTimeout($this->timeout > 0 ? $this->timeout : null);
-
-        if ($fileList !== null) {
-            $process->setInput(implode("\n", $fileList));
-        }
-
-        try {
-            $process->run();
-        } catch (ProcessTimedOutException) {
-            throw new TarException('Tar process timed out after ' . $this->timeout . ' seconds.');
-        }
-
-        if (!$process->isSuccessful()) {
-            throw TarException::compressionFailed(
-                implode(' ', $argv),
-                $process->getExitCode() ?? 1,
-                trim($process->getErrorOutput())
-            );
-        }
+    private function execute(
+        array $argv,
+        ?array $fileList = null,
+        ?callable $onProgress = null,
+        string $failureFactory = 'compressionFailed'
+    ): void {
+        $this->runProcess(
+            $argv,
+            $fileList !== null ? implode("\n", $fileList) : null,
+            null,
+            $onProgress,
+            fn (int $code, string $stderr) => throw TarException::{$failureFactory}(implode(' ', $argv), $code, $stderr),
+            fn () => throw new TarException('Tar process timed out after ' . $this->timeout . ' seconds.'),
+        );
     }
 
     /**

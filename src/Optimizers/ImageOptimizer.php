@@ -7,6 +7,7 @@ namespace GomdimApps\Slimmer\Optimizers;
 use GomdimApps\Slimmer\Contracts\Optimizer;
 use GomdimApps\Slimmer\Engines\GhostscriptEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
+use GomdimApps\Slimmer\Optimizers\Utils\Image\ImageArgsBuilder;
 use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
 use GomdimApps\Slimmer\Traits\OptimizationIO;
 
@@ -23,6 +24,9 @@ class ImageOptimizer implements Optimizer
 
     /** Additional raw Ghostscript arguments */
     private array $extraArgs = [];
+
+    /** Explicitly set string dimensions e.g. "800x600" */
+    private ?string $dimensions = null;
 
     public function __construct(private readonly GhostscriptEngine $engine = new GhostscriptEngine())
     {
@@ -70,11 +74,6 @@ class ImageOptimizer implements Optimizer
     // -------------------------------------------------------------------------
 
     /**
-     * Explicitly set string dimensions e.g. "800x600"
-     */
-    private ?string $dimensions = null;
-
-    /**
      * @throws SlimmerException
      */
     public function optimize(?string $inputPath, string $outputPath): float
@@ -84,16 +83,9 @@ class ImageOptimizer implements Optimizer
         $this->validateOutputDirectory($outputPath);
 
         $originalSize = filesize($resolvedInputPath);
-        
-        $dimensions = $this->dimensions;
-        if ($dimensions === null) {
-            $imageSize = @getimagesize($resolvedInputPath);
-            if ($imageSize !== false) {
-                $dimensions = $imageSize[0] . 'x' . $imageSize[1];
-            }
-        }
 
-        $device = $this->determineDevice($outputPath);
+        $dimensions = ImageArgsBuilder::resolveDimensions($this->dimensions, $resolvedInputPath);
+        $device     = ImageArgsBuilder::determineDevice($outputPath);
 
         $this->engine->compressImage(
             $resolvedInputPath,
@@ -127,16 +119,9 @@ class ImageOptimizer implements Optimizer
     public function dryRun(?string $inputPath, string $outputPath): string
     {
         $resolvedInputPath = $this->resolveInputPath($inputPath);
-        
-        $dimensions = $this->dimensions;
-        if ($dimensions === null) {
-            $imageSize = @getimagesize($resolvedInputPath);
-            if ($imageSize !== false) {
-                $dimensions = $imageSize[0] . 'x' . $imageSize[1];
-            }
-        }
 
-        $device = $this->determineDevice($outputPath);
+        $dimensions = ImageArgsBuilder::resolveDimensions($this->dimensions, $resolvedInputPath);
+        $device     = ImageArgsBuilder::determineDevice($outputPath);
 
         $argv = $this->engine->buildImageArgv(
             $resolvedInputPath,
@@ -148,20 +133,6 @@ class ImageOptimizer implements Optimizer
         );
 
         return implode(' ', $argv);
-    }
-
-    // -------------------------------------------------------------------------
-    // Internal helpers
-    // -------------------------------------------------------------------------
-
-    private function determineDevice(string $outputPath): string
-    {
-        $ext = strtolower(pathinfo($outputPath, PATHINFO_EXTENSION));
-        
-        return match ($ext) {
-            'png' => 'png16m',
-            default => 'jpeg',
-        };
     }
 
 }

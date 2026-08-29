@@ -15,6 +15,9 @@
 - **Tar Compression**
   - [CompressTar](tar-compression.md)
 
+- **Zip Compression**
+  - [CompressZip](zip-compression.md)
+
 - **Reference**
   - [Error Handling](error-handling.md)
   - [Troubleshooting](troubleshooting.md)

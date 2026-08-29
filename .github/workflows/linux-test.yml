@@ -19,7 +19,9 @@ jobs:
         run: docker build -t slimmer-test .
 
       - name: 3. Execute Tests
-        run: docker run --rm slimmer-test vendor/bin/pest --configuration phpunit.xml --test-directory=test
+        # Runs as a non-root user: some tests (e.g. chmod-based deletion-failure checks)
+        # rely on real permission enforcement, which root bypasses.
+        run: docker run --rm --user "$(id -u):$(id -g)" slimmer-test vendor/bin/pest --configuration phpunit.xml --test-directory=test
 
       - name: 4. Check Tar and Zstd Versions
         run: docker run --rm slimmer-test sh -c 'tar --version && zstd --version'

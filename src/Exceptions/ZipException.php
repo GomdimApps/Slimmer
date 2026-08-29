@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace GomdimApps\Slimmer\Exceptions;
 
 /**
- * Exception for tar compression and retention errors.
+ * Exception for zip compression, extraction and retention errors.
  */
-class TarException extends SlimmerException
+class ZipException extends SlimmerException
 {
     /**
-     * Tar compression process failed.
+     * Zip compression process failed.
      */
     public static function compressionFailed(string $command, int $code, string $stderr = ''): static
     {
-        $message = "Tar compression failed (exit {$code}): \"{$command}\"";
+        $message = "Zip compression failed (exit {$code}): \"{$command}\"";
 
         if ($stderr !== '') {
             $message .= "\nProcess output: {$stderr}";
@@ -24,21 +24,11 @@ class TarException extends SlimmerException
     }
 
     /**
-     * Unsupported archive format requested.
-     */
-    public static function unsupportedFormat(string $format): static
-    {
-        return new static(
-            "Unsupported archive format \"{$format}\". Supported formats: gz, zst, bz2."
-        );
-    }
-
-    /**
-     * Tar extraction process failed.
+     * Zip extraction process failed.
      */
     public static function extractionFailed(string $command, int $code, string $stderr = ''): static
     {
-        $message = "Tar extraction failed (exit {$code}): \"{$command}\"";
+        $message = "Zip extraction failed (exit {$code}): \"{$command}\"";
 
         if ($stderr !== '') {
             $message .= "\nProcess output: {$stderr}";
@@ -52,24 +42,13 @@ class TarException extends SlimmerException
      */
     public static function listingFailed(string $command, int $code, string $stderr = ''): static
     {
-        $message = "Tar listing failed (exit {$code}): \"{$command}\"";
+        $message = "Zip listing failed (exit {$code}): \"{$command}\"";
 
         if ($stderr !== '') {
             $message .= "\nProcess output: {$stderr}";
         }
 
         return new static($message, $code);
-    }
-
-    /**
-     * The archive format could not be auto-detected from magic bytes or extension.
-     */
-    public static function formatDetectionFailed(string $path): static
-    {
-        return new static(
-            "Could not detect the archive format of \"{$path}\". "
-            . 'Pass the format explicitly via withFormat().'
-        );
     }
 
     /**

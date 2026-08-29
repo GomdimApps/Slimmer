@@ -23,7 +23,13 @@ class SlimmerException extends RuntimeException
         return new static("Output directory is not writable: \"{$directory}\".");
     }
 
-    /** Engine binary not found */
+    /**
+     * Engine binary not found.
+     *
+     * @deprecated Never thrown in this library — the actual "binary not found" path uses
+     *             driverNotInstalled() instead. Kept for backward compatibility only.
+     * @see driverNotInstalled()
+     */
     public static function engineNotFound(string $binary): static
     {
         return new static(
@@ -50,7 +56,12 @@ class SlimmerException extends RuntimeException
         return new static($message, $code);
     }
 
-    /** Optimized file is larger than original */
+    /**
+     * Optimized file is larger than original.
+     *
+     * @deprecated Unused in this library; also carries a typo ("Dize" should read "Size").
+     *             Kept for backward compatibility only — do not call in new code.
+     */
     public static function optimizationIncreasesDize(string $outputPath, int $originalBytes, int $outputBytes): static
     {
         return new static(
