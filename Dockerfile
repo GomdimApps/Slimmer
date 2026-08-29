@@ -1,4 +1,4 @@
-# Slimmer — PHP 8.4 + Ghostscript (Alpine)
+# Slimmer — PHP 8.2 + Ghostscript (Alpine)
 FROM php:8.2-cli-alpine
 
 # System dependencies
