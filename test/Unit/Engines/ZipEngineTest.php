@@ -9,22 +9,19 @@ use GomdimApps\Slimmer\Exceptions\ZipException;
 describe('ZipEngine', function () {
 
     beforeEach(function () {
-        $this->outputDir = sys_get_temp_dir() . '/slimmer_zip_engine_out_' . uniqid();
-        mkdir($this->outputDir);
-
-        $this->sourceDir = sys_get_temp_dir() . '/slimmer_zip_engine_src_' . uniqid();
-        mkdir($this->sourceDir);
-        mkdir($this->sourceDir . '/subdir');
-        file_put_contents($this->sourceDir . '/hello.txt', str_repeat('Hello, Slimmer!', 50));
-        file_put_contents($this->sourceDir . '/log.log', str_repeat('log content', 50));
-        file_put_contents($this->sourceDir . '/subdir/nested.txt', str_repeat('Nested content.', 50));
+        $fixture = makeArchiveFixture('slimmer_zip_engine', [
+            'hello.txt'         => str_repeat('Hello, Slimmer!', 50),
+            'log.log'           => str_repeat('log content', 50),
+            'subdir/nested.txt' => str_repeat('Nested content.', 50),
+        ]);
+        $this->outputDir = $fixture->outputDir;
+        $this->sourceDir = $fixture->sourceDir;
 
         $this->engine = new ZipEngine();
     });
 
     afterEach(function () {
-        removeDir($this->outputDir);
-        removeDir($this->sourceDir);
+        removeArchiveFixture((object) ['outputDir' => $this->outputDir, 'sourceDir' => $this->sourceDir]);
     });
 
     // -------------------------------------------------------------------------
@@ -67,20 +64,11 @@ describe('ZipEngine', function () {
     // Fluent configuration — returns same instance
     // -------------------------------------------------------------------------
 
-    it('setTimeout returns the same instance', function () {
-        expect($this->engine->setTimeout(30.0))->toBe($this->engine);
-    });
-
-    it('withCompressionLevel returns the same instance', function () {
-        expect($this->engine->withCompressionLevel(9))->toBe($this->engine);
-    });
-
-    it('withExclude returns the same instance', function () {
-        expect($this->engine->withExclude('*.log'))->toBe($this->engine);
-    });
-
-    it('withCustomArgs returns the same instance', function () {
-        expect($this->engine->withCustomArgs('-v'))->toBe($this->engine);
+    it('fluent setters return the same instance', function () {
+        expect($this->engine->setTimeout(30.0))->toBe($this->engine)
+            ->and($this->engine->withCompressionLevel(9))->toBe($this->engine)
+            ->and($this->engine->withExclude('*.log'))->toBe($this->engine)
+            ->and($this->engine->withCustomArgs('-v'))->toBe($this->engine);
     });
 
     // -------------------------------------------------------------------------

@@ -8,6 +8,8 @@ use GomdimApps\Slimmer\Contracts\Optimizer;
 use GomdimApps\Slimmer\Engines\ZipEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 use GomdimApps\Slimmer\Exceptions\ZipException;
+use GomdimApps\Slimmer\Support\CompressionLevelValidator;
+use GomdimApps\Slimmer\Traits\CompressionRetention;
 use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
 use GomdimApps\Slimmer\Traits\SourceFiles;
 
@@ -19,6 +21,7 @@ use GomdimApps\Slimmer\Traits\SourceFiles;
  */
 class CompressZip implements Optimizer
 {
+    use CompressionRetention;
     use InteractsWithTemporaryInput;
     use SourceFiles;
 
@@ -49,12 +52,7 @@ class CompressZip implements Optimizer
      */
     public function withCompressionLevel(int $level): static
     {
-        [$min, $max] = ZipEngine::LEVEL_RANGE;
-        if ($level < $min || $level > $max) {
-            throw new \InvalidArgumentException(
-                "Compression level {$level} is out of range for zip (allowed: {$min}-{$max})."
-            );
-        }
+        CompressionLevelValidator::assertInRange($level, ZipEngine::LEVEL_RANGE);
 
         $this->compressionLevel = $level;
 
@@ -105,27 +103,9 @@ class CompressZip implements Optimizer
         $this->validateInputPath($resolvedInputPath);
         $this->validateOutputDirectory($outputPath);
 
-        $originalSize = $this->getInputSize($resolvedInputPath);
+        [, $ratio] = $this->compressAndMeasure($resolvedInputPath, $outputPath);
 
-        $this->configureEngine();
-
-        $resolvedOutputPath = $this->engine->resolveOutputPath($resolvedInputPath, $outputPath);
-
-        $this->engine->compress($resolvedInputPath, $resolvedOutputPath, $this->buildExtraArgs(), $this->onProgress);
-
-        if (!is_file($resolvedOutputPath)) {
-            throw new ZipException(
-                "Zip did not produce an output file at \"{$resolvedOutputPath}\"."
-            );
-        }
-
-        $optimizedSize = (int) filesize($resolvedOutputPath);
-
-        if ($originalSize === 0) {
-            return 0.0;
-        }
-
-        return max(0.0, round(($originalSize - $optimizedSize) / $originalSize, 4));
+        return $ratio;
     }
 
     /**
@@ -159,25 +139,7 @@ class CompressZip implements Optimizer
         $this->validateInputPath($inputPath);
         $this->validateOutputDirectory($outputPath);
 
-        $originalSize = $this->getInputSize($inputPath);
-
-        $this->configureEngine();
-
-        $resolvedOutputPath = $this->engine->resolveOutputPath($inputPath, $outputPath);
-
-        $this->engine->compress($inputPath, $resolvedOutputPath, $this->buildExtraArgs(), $this->onProgress);
-
-        if (!is_file($resolvedOutputPath)) {
-            throw new ZipException(
-                "Zip did not produce an output file at \"{$resolvedOutputPath}\"."
-            );
-        }
-
-        $optimizedSize = (int) filesize($resolvedOutputPath);
-
-        $ratio = $originalSize > 0
-            ? max(0.0, round(($originalSize - $optimizedSize) / $originalSize, 4))
-            : 0.0;
+        [$resolvedOutputPath, $ratio] = $this->compressAndMeasure($inputPath, $outputPath);
 
         $this->deleteSource($inputPath);
 
@@ -187,34 +149,9 @@ class CompressZip implements Optimizer
         return $ratio;
     }
 
-    /**
-     * Keep only the $limit most-recent .zip archives in $directory, deleting the rest.
-     *
-     * @throws ZipException On deletion failure.
-     */
-    public function cleanDirectory(string $directory, int $limit): void
-    {
-        if (!is_dir($directory)) {
-            return;
-        }
-
-        $files = glob($directory . '/*.zip') ?: [];
-
-        if (count($files) <= $limit) {
-            return;
-        }
-
-        usort($files, static fn(string $a, string $b): int => filemtime($b) <=> filemtime($a));
-
-        foreach (array_slice($files, $limit) as $file) {
-            if (!@unlink($file)) {
-                throw ZipException::retentionCleanupFailed(
-                    $directory,
-                    sprintf('Could not delete "%s": %s', $file, error_get_last()['message'] ?? 'unknown error')
-                );
-            }
-        }
-    }
+    // cleanDirectory(string $directory, int $limit): void — keeps only the $limit most-recent
+    // .zip archives (ordered by mtime) — is provided by the CompressionRetention trait, driven
+    // by retentionGlobPatterns() and throwRetentionCleanupFailedException() below.
 
     // -------------------------------------------------------------------------
     // Internal helpers
@@ -258,5 +195,40 @@ class CompressZip implements Optimizer
         if (!is_dir($directory) || !is_writable($directory)) {
             throw SlimmerException::outputDirectoryNotWritable($directory);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // CompressionRetention / SourceFiles hooks
+    // -------------------------------------------------------------------------
+
+    /** @return string[] */
+    protected function retentionGlobPatterns(): array
+    {
+        return ['*.zip'];
+    }
+
+    protected function resolveArchivePath(string $inputPath, string $outputPath): string
+    {
+        return $this->engine->resolveOutputPath($inputPath, $outputPath);
+    }
+
+    protected function runCompression(string $inputPath, string $resolvedOutputPath): void
+    {
+        $this->engine->compress($inputPath, $resolvedOutputPath, $this->buildExtraArgs(), $this->onProgress);
+    }
+
+    protected function throwMissingOutputException(string $resolvedOutputPath): never
+    {
+        throw new ZipException("Zip did not produce an output file at \"{$resolvedOutputPath}\".");
+    }
+
+    protected function throwRetentionCleanupFailedException(string $directory, string $reason): never
+    {
+        throw ZipException::retentionCleanupFailed($directory, $reason);
+    }
+
+    protected function throwDeletionFailedException(string $path, string $reason): never
+    {
+        throw ZipException::deletionFailed($path, $reason);
     }
 }

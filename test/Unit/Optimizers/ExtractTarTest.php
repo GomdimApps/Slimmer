@@ -11,14 +11,12 @@ use GomdimApps\Slimmer\Optimizers\ExtractTar;
 describe('ExtractTar', function () {
 
     beforeEach(function () {
-        $this->outputDir = sys_get_temp_dir() . '/slimmer_extract_out_' . uniqid();
-        mkdir($this->outputDir);
-
-        $this->sourceDir = sys_get_temp_dir() . '/slimmer_extract_src_' . uniqid();
-        mkdir($this->sourceDir);
-        mkdir($this->sourceDir . '/subdir');
-        file_put_contents($this->sourceDir . '/hello.txt', str_repeat('Hello, Slimmer!', 50));
-        file_put_contents($this->sourceDir . '/subdir/nested.txt', str_repeat('Nested content.', 50));
+        $fixture = makeArchiveFixture('slimmer_extract', [
+            'hello.txt'         => str_repeat('Hello, Slimmer!', 50),
+            'subdir/nested.txt' => str_repeat('Nested content.', 50),
+        ]);
+        $this->outputDir = $fixture->outputDir;
+        $this->sourceDir = $fixture->sourceDir;
 
         // Pre-build a real archive to extract/list in each test via CompressTar.
         $this->archive = $this->outputDir . '/source.tar.gz';
@@ -28,8 +26,7 @@ describe('ExtractTar', function () {
     });
 
     afterEach(function () {
-        removeDir($this->outputDir);
-        removeDir($this->sourceDir);
+        removeArchiveFixture((object) ['outputDir' => $this->outputDir, 'sourceDir' => $this->sourceDir]);
     });
 
     // -------------------------------------------------------------------------
@@ -48,20 +45,11 @@ describe('ExtractTar', function () {
     // Fluent API — returns same instance
     // -------------------------------------------------------------------------
 
-    it('withFormat returns the same instance', function () {
-        expect($this->extractor->withFormat('gz'))->toBe($this->extractor);
-    });
-
-    it('withStripComponents returns the same instance', function () {
-        expect($this->extractor->withStripComponents(1))->toBe($this->extractor);
-    });
-
-    it('withExclude returns the same instance', function () {
-        expect($this->extractor->withExclude('*.log'))->toBe($this->extractor);
-    });
-
-    it('withProgress returns the same instance', function () {
-        expect($this->extractor->withProgress(function () {}))->toBe($this->extractor);
+    it('fluent setters return the same instance', function () {
+        expect($this->extractor->withFormat('gz'))->toBe($this->extractor)
+            ->and($this->extractor->withStripComponents(1))->toBe($this->extractor)
+            ->and($this->extractor->withExclude('*.log'))->toBe($this->extractor)
+            ->and($this->extractor->withProgress(function () {}))->toBe($this->extractor);
     });
 
     // -------------------------------------------------------------------------

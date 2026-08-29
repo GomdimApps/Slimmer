@@ -25,6 +25,9 @@ class ImageOptimizer implements Optimizer
     /** Additional raw Ghostscript arguments */
     private array $extraArgs = [];
 
+    /** Explicitly set string dimensions e.g. "800x600" */
+    private ?string $dimensions = null;
+
     public function __construct(private readonly GhostscriptEngine $engine = new GhostscriptEngine())
     {
     }
@@ -69,11 +72,6 @@ class ImageOptimizer implements Optimizer
     // -------------------------------------------------------------------------
     // Optimizer contract
     // -------------------------------------------------------------------------
-
-    /**
-     * Explicitly set string dimensions e.g. "800x600"
-     */
-    private ?string $dimensions = null;
 
     /**
      * @throws SlimmerException

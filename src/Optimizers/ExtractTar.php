@@ -9,7 +9,9 @@ use GomdimApps\Slimmer\Engines\TarEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 use GomdimApps\Slimmer\Exceptions\TarException;
 use GomdimApps\Slimmer\Optimizers\Utils\Tar\TarFormatDetector;
+use GomdimApps\Slimmer\Traits\ExtractsFiles;
 use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
+use GomdimApps\Slimmer\Traits\OptimizationIO;
 
 /**
  * Extracts and lists .tar.gz / .tar.zst / .tar.bz2 archives.
@@ -20,7 +22,9 @@ use GomdimApps\Slimmer\Traits\InteractsWithTemporaryInput;
  */
 class ExtractTar implements Archiver
 {
+    use ExtractsFiles;
     use InteractsWithTemporaryInput;
+    use OptimizationIO;
 
     /** Explicit format, or null to auto-detect via TarFormatDetector. */
     private ?string $format = null;
@@ -108,7 +112,7 @@ class ExtractTar implements Archiver
     public function extract(?string $inputPath, string $outputDir): array
     {
         $resolvedInputPath = $this->resolveInputPath($inputPath);
-        $this->validateInputPath($resolvedInputPath);
+        $this->validateInputFile($resolvedInputPath);
 
         $format = $this->resolveFormat($resolvedInputPath);
         $this->configureEngine();
@@ -136,7 +140,7 @@ class ExtractTar implements Archiver
     public function listContents(?string $inputPath): array
     {
         $resolvedInputPath = $this->resolveInputPath($inputPath);
-        $this->validateInputPath($resolvedInputPath);
+        $this->validateInputFile($resolvedInputPath);
 
         $format = $this->resolveFormat($resolvedInputPath);
 
@@ -191,42 +195,4 @@ class ExtractTar implements Archiver
         $this->engine->withExclude(...$this->excludePatterns);
     }
 
-    /**
-     * Walk $outputDir after a successful extraction and return the absolute
-     * paths of every extracted file. Robust regardless of whether verbose
-     * output / a progress callback was used.
-     *
-     * @return string[]
-     */
-    private function collectExtractedFiles(string $outputDir): array
-    {
-        if (!is_dir($outputDir)) {
-            return [];
-        }
-
-        $files = [];
-
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($outputDir, \RecursiveDirectoryIterator::SKIP_DOTS)
-        );
-
-        foreach ($iterator as $item) {
-            /** @var \SplFileInfo $item */
-            if ($item->isFile()) {
-                $files[] = $item->getPathname();
-            }
-        }
-
-        sort($files);
-
-        return $files;
-    }
-
-    /** @throws SlimmerException */
-    private function validateInputPath(string $path): void
-    {
-        if (!is_file($path) || !is_readable($path)) {
-            throw SlimmerException::inputFileNotFound($path);
-        }
-    }
 }

@@ -275,7 +275,7 @@ class PdfOptimizer implements Optimizer
     public function dryRun(?string $inputPath, string $outputPath): string
     {
         $resolvedInputPath = $this->resolveInputPath($inputPath);
-        
+
         $argv = $this->engine->buildArgv(
             $resolvedInputPath,
             $outputPath,

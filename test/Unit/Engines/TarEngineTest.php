@@ -11,24 +11,18 @@ describe('TarEngine', function () {
     beforeEach(function () {
         $this->documentDir = dirname(__DIR__, 3) . '/document';
 
-        // Writable output directory for archive files
-        $this->outputDir = sys_get_temp_dir() . '/slimmer_tar_engine_out_' . uniqid();
-        mkdir($this->outputDir);
-
-        // Source directory with a predictable file tree (including one empty subdir)
-        $this->sourceDir = sys_get_temp_dir() . '/slimmer_tar_engine_src_' . uniqid();
-        mkdir($this->sourceDir);
-        mkdir($this->sourceDir . '/subdir');
-        mkdir($this->sourceDir . '/empty');
-        file_put_contents($this->sourceDir . '/hello.txt', str_repeat('Hello, Slimmer!', 50));
-        file_put_contents($this->sourceDir . '/subdir/nested.txt', str_repeat('Nested content.', 50));
+        $fixture = makeArchiveFixture('slimmer_tar_engine', [
+            'hello.txt'         => str_repeat('Hello, Slimmer!', 50),
+            'subdir/nested.txt' => str_repeat('Nested content.', 50),
+        ], withEmptyDir: true);
+        $this->outputDir = $fixture->outputDir;
+        $this->sourceDir = $fixture->sourceDir;
 
         $this->engine = new TarEngine();
     });
 
     afterEach(function () {
-        removeDir($this->outputDir);
-        removeDir($this->sourceDir);
+        removeArchiveFixture((object) ['outputDir' => $this->outputDir, 'sourceDir' => $this->sourceDir]);
     });
 
     // -------------------------------------------------------------------------
@@ -66,28 +60,13 @@ describe('TarEngine', function () {
     // Fluent configuration — returns same instance
     // -------------------------------------------------------------------------
 
-    it('setTimeout returns the same instance', function () {
-        expect($this->engine->setTimeout(30.0))->toBe($this->engine);
-    });
-
-    it('withCompressionLevel returns the same instance', function () {
-        expect($this->engine->withCompressionLevel(9))->toBe($this->engine);
-    });
-
-    it('withThreads returns the same instance', function () {
-        expect($this->engine->withThreads(4))->toBe($this->engine);
-    });
-
-    it('withExclude returns the same instance', function () {
-        expect($this->engine->withExclude('*.log'))->toBe($this->engine);
-    });
-
-    it('withIgnoreEmptyDirectories returns the same instance', function () {
-        expect($this->engine->withIgnoreEmptyDirectories())->toBe($this->engine);
-    });
-
-    it('withCustomArgs returns the same instance', function () {
-        expect($this->engine->withCustomArgs('--verbose'))->toBe($this->engine);
+    it('fluent setters return the same instance', function () {
+        expect($this->engine->setTimeout(30.0))->toBe($this->engine)
+            ->and($this->engine->withCompressionLevel(9))->toBe($this->engine)
+            ->and($this->engine->withThreads(4))->toBe($this->engine)
+            ->and($this->engine->withExclude('*.log'))->toBe($this->engine)
+            ->and($this->engine->withIgnoreEmptyDirectories())->toBe($this->engine)
+            ->and($this->engine->withCustomArgs('--verbose'))->toBe($this->engine);
     });
 
     it('withThreads clamps values below 1 to 1', function () {
@@ -111,19 +90,14 @@ describe('TarEngine', function () {
         expect($this->engine->resolveOutputPath('/input/dir', $path, 'zst'))->toBe($path);
     });
 
-    it('resolveOutputPath generates a .tar.gz filename when outputPath has no extension', function () {
-        $result = $this->engine->resolveOutputPath('/data/mydir', $this->outputDir, 'gz');
+    it('resolveOutputPath generates a .tar.<ext> filename when outputPath has no extension', function (string $format, string $extension) {
+        $result = $this->engine->resolveOutputPath('/data/mydir', $this->outputDir, $format);
 
         expect($result)->toStartWith($this->outputDir . DIRECTORY_SEPARATOR . 'mydir_')
-            ->and($result)->toEndWith('.tar.gz');
-    });
-
-    it('resolveOutputPath generates a .tar.zst filename when outputPath has no extension', function () {
-        $result = $this->engine->resolveOutputPath('/data/mydir', $this->outputDir, 'zst');
-
-        expect($result)->toStartWith($this->outputDir . DIRECTORY_SEPARATOR . 'mydir_')
-            ->and($result)->toEndWith('.tar.zst');
-    });
+            ->and($result)->toEndWith(".tar.{$extension}");
+    })->with([
+        ['gz', 'gz'], ['zst', 'zst'], ['bz2', 'bz2'],
+    ]);
 
     it('resolveOutputPath embeds the current date in the auto-generated filename', function () {
         $result = $this->engine->resolveOutputPath('/data/mydir', $this->outputDir, 'gz');
@@ -156,17 +130,13 @@ describe('TarEngine', function () {
             ->and($cmd)->toContain($output);
     });
 
-    it('buildArgv uses gzip as the compress program for gz format', function () {
-        $argv = $this->engine->buildArgv($this->sourceDir, '/tmp/out.tar.gz', 'gz');
+    it('buildArgv uses the right compress program per format', function (string $format, string $program) {
+        $argv = $this->engine->buildArgv($this->sourceDir, "/tmp/out.tar.{$format}", $format);
 
-        expect(implode(' ', $argv))->toContain('--use-compress-program=gzip');
-    });
-
-    it('buildArgv uses zstd as the compress program for zst format', function () {
-        $argv = $this->engine->withCompressionLevel(3)->buildArgv($this->sourceDir, '/tmp/out.tar.zst', 'zst');
-
-        expect(implode(' ', $argv))->toContain('--use-compress-program=zstd');
-    });
+        expect(implode(' ', $argv))->toContain("--use-compress-program={$program}");
+    })->with([
+        ['gz', 'gzip'], ['zst', 'zstd'], ['bz2', 'bzip2'],
+    ]);
 
     it('buildArgv embeds the compression level in the compress program', function () {
         $argv = $this->engine->withCompressionLevel(9)->buildArgv($this->sourceDir, '/tmp/out.tar.gz', 'gz');
@@ -342,6 +312,8 @@ describe('TarEngine', function () {
     // -------------------------------------------------------------------------
     // bz2 format
     // -------------------------------------------------------------------------
+    // (buildArgv's compress-program and resolveOutputPath's filename-generation
+    // checks for bz2 were merged into their gz/zst dataset tests above.)
 
     it('compresses a source directory into a .tar.bz2 archive', function () {
         $output = $this->outputDir . '/archive.tar.bz2';
@@ -350,18 +322,6 @@ describe('TarEngine', function () {
 
         expect(is_file($output))->toBeTrue()
             ->and(filesize($output))->toBeGreaterThan(0);
-    });
-
-    it('buildArgv uses bzip2 as the compress program for bz2 format', function () {
-        $argv = $this->engine->buildArgv($this->sourceDir, '/tmp/out.tar.bz2', 'bz2');
-
-        expect(implode(' ', $argv))->toContain('--use-compress-program=bzip2');
-    });
-
-    it('resolveOutputPath generates a .tar.bz2 filename when outputPath has no extension', function () {
-        $result = $this->engine->resolveOutputPath('/data/mydir', $this->outputDir, 'bz2');
-
-        expect($result)->toEndWith('.tar.bz2');
     });
 
     // -------------------------------------------------------------------------
@@ -523,6 +483,27 @@ describe('TarEngine', function () {
 
         expect($withoutVerbose)->not->toContain(' -v')
             ->and($withVerbose)->toContain(' -v');
+    });
+
+    // Regression guard for the Tar/Zip progress-buffer trim unification (approved refactor fix):
+    // the shared ProcessExecution::runProcess() must filter blank/whitespace-only lines for
+    // BOTH engines, including Tar (which previously forwarded them untrimmed).
+    it('runProcess (shared by Tar/Zip engines) filters blank lines from progress callback output', function () {
+        $seen = [];
+
+        $reflection = new ReflectionMethod(TarEngine::class, 'runProcess');
+        $reflection->setAccessible(true);
+        $reflection->invoke(
+            $this->engine,
+            ['/bin/sh', '-c', 'printf "line1\n\n   \nline2\n"'],
+            null,
+            null,
+            function (string $line) use (&$seen) { $seen[] = $line; },
+            function (int $code, string $stderr) {},
+            function () {}
+        );
+
+        expect($seen)->toBe(['line1', 'line2']);
     });
 
 });

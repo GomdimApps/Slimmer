@@ -4,29 +4,25 @@ declare(strict_types=1);
 
 use GomdimApps\Slimmer\Engines\ZipEngine;
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
+use GomdimApps\Slimmer\Exceptions\ZipException;
 use GomdimApps\Slimmer\Optimizers\CompressZip;
 
 describe('CompressZip', function () {
 
     beforeEach(function () {
-        $this->outputDir = sys_get_temp_dir() . '/slimmer_zip_opt_out_' . uniqid();
-        mkdir($this->outputDir);
-
-        $this->sourceDir = sys_get_temp_dir() . '/slimmer_zip_opt_src_' . uniqid();
-        mkdir($this->sourceDir);
-        mkdir($this->sourceDir . '/subdir');
-        file_put_contents($this->sourceDir . '/hello.txt', str_repeat('Hello, Slimmer!', 100));
-        file_put_contents($this->sourceDir . '/data.json', str_repeat('{"key":"value"}', 150));
-        file_put_contents($this->sourceDir . '/subdir/nested.txt', str_repeat('Nested content.', 100));
+        $fixture = makeArchiveFixture('slimmer_zip_opt', [
+            'hello.txt'         => str_repeat('Hello, Slimmer!', 100),
+            'data.json'         => str_repeat('{"key":"value"}', 150),
+            'subdir/nested.txt' => str_repeat('Nested content.', 100),
+        ]);
+        $this->outputDir = $fixture->outputDir;
+        $this->sourceDir = $fixture->sourceDir;
 
         $this->optimizer = new CompressZip();
     });
 
     afterEach(function () {
-        removeDir($this->outputDir);
-        if (is_dir($this->sourceDir)) {
-            removeDir($this->sourceDir);
-        }
+        removeArchiveFixture((object) ['outputDir' => $this->outputDir, 'sourceDir' => $this->sourceDir]);
     });
 
     // -------------------------------------------------------------------------
@@ -45,20 +41,11 @@ describe('CompressZip', function () {
     // Fluent API — returns same instance
     // -------------------------------------------------------------------------
 
-    it('withCompressionLevel returns the same instance', function () {
-        expect($this->optimizer->withCompressionLevel(9))->toBe($this->optimizer);
-    });
-
-    it('withExclude returns the same instance', function () {
-        expect($this->optimizer->withExclude('*.log'))->toBe($this->optimizer);
-    });
-
-    it('withCustomArgs returns the same instance', function () {
-        expect($this->optimizer->withCustomArgs('--symlinks'))->toBe($this->optimizer);
-    });
-
-    it('withProgress returns the same instance', function () {
-        expect($this->optimizer->withProgress(function () {}))->toBe($this->optimizer);
+    it('fluent setters return the same instance', function () {
+        expect($this->optimizer->withCompressionLevel(9))->toBe($this->optimizer)
+            ->and($this->optimizer->withExclude('*.log'))->toBe($this->optimizer)
+            ->and($this->optimizer->withCustomArgs('--symlinks'))->toBe($this->optimizer)
+            ->and($this->optimizer->withProgress(function () {}))->toBe($this->optimizer);
     });
 
     it('withCompressionLevel throws InvalidArgumentException out of range', function () {
@@ -223,6 +210,32 @@ describe('CompressZip', function () {
         $remaining = glob($this->outputDir . '/*.zip') ?: [];
 
         expect(count($remaining))->toBe(2);
+    });
+
+    // Regression guard (approved refactor fix): CompressZip must throw ZipException — not
+    // TarException, which SourceFiles hardcoded before the fix — when source deletion fails
+    // during compressAndRetain().
+    it('compressAndRetain throws ZipException (not TarException) when source deletion fails', function () {
+        $lockedDir  = sys_get_temp_dir() . '/slimmer_zip_locked_' . uniqid();
+        mkdir($lockedDir);
+        $retainFile = $lockedDir . '/data.txt';
+        file_put_contents($retainFile, str_repeat('x', 100));
+
+        chmod($lockedDir, 0500); // read+execute, no write -> unlink() of $retainFile will fail
+
+        // Suppress the genuine unlink() permission warning this deliberately triggers,
+        // so the test reports pass/fail on the assertion alone, not as a PHPUnit warning.
+        set_error_handler(static fn () => true);
+
+        try {
+            expect(fn () => $this->optimizer->compressAndRetain($retainFile, $this->outputDir, 5))
+                ->toThrow(ZipException::class);
+        } finally {
+            restore_error_handler();
+            chmod($lockedDir, 0755);
+            @unlink($retainFile);
+            @rmdir($lockedDir);
+        }
     });
 
     it('cleanDirectory removes archives beyond the $limit, ordered by mtime', function () {

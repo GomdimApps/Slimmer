@@ -6,7 +6,7 @@ namespace GomdimApps\Slimmer\Engines;
 
 use GomdimApps\Slimmer\Exceptions\SlimmerException;
 use GomdimApps\Slimmer\Traits\Binary;
-use Symfony\Component\Process\Exception\ProcessTimedOutException;
+use GomdimApps\Slimmer\Traits\ProcessExecution;
 use Symfony\Component\Process\Process;
 
 /**
@@ -15,9 +15,10 @@ use Symfony\Component\Process\Process;
 class GhostscriptEngine
 {
     use Binary;
+    use ProcessExecution;
 
     /** Resolved path to Ghostscript binary */
-    private string $binary;
+    private readonly string $binary;
 
     /**
      * @param string $binary Binary name or absolute path.
@@ -176,23 +177,14 @@ class GhostscriptEngine
      */
     private function execute(array $argv): void
     {
-        $process = new Process($argv);
-        
-        $process->setTimeout($this->timeout > 0 ? $this->timeout : null);
-
-        try {
-            $process->run();
-        } catch (ProcessTimedOutException $e) {
-            throw new SlimmerException('Ghostscript process timed out after ' . $this->timeout . ' seconds.');
-        }
-
-        if (!$process->isSuccessful()) {
-            throw SlimmerException::engineCommandFailed(
-                implode(' ', $argv),
-                $process->getExitCode() ?? 1,
-                trim($process->getErrorOutput())
-            );
-        }
+        $this->runProcess(
+            $argv,
+            null,
+            null,
+            null,
+            fn (int $code, string $stderr) => throw SlimmerException::engineCommandFailed(implode(' ', $argv), $code, $stderr),
+            fn () => throw new SlimmerException('Ghostscript process timed out after ' . $this->timeout . ' seconds.'),
+        );
     }
 
 }

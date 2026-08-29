@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace GomdimApps\Slimmer\Engines;
 
 use GomdimApps\Slimmer\Exceptions\ZipException;
+use GomdimApps\Slimmer\Support\CompressionLevelValidator;
 use GomdimApps\Slimmer\Traits\Binary;
+use GomdimApps\Slimmer\Traits\ProcessExecution;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
@@ -19,6 +21,7 @@ use Symfony\Component\Process\Process;
 class ZipEngine
 {
     use Binary;
+    use ProcessExecution;
 
     /** Valid compression-level range: 0 (store) to 9 (max). */
     public const LEVEL_RANGE = [0, 9];
@@ -69,12 +72,7 @@ class ZipEngine
      */
     public function withCompressionLevel(int $level): static
     {
-        [$min, $max] = self::LEVEL_RANGE;
-        if ($level < $min || $level > $max) {
-            throw new \InvalidArgumentException(
-                "Compression level {$level} is out of range for zip (allowed: {$min}-{$max})."
-            );
-        }
+        CompressionLevelValidator::assertInRange($level, self::LEVEL_RANGE);
 
         $this->compressionLevel = $level;
 
@@ -348,38 +346,13 @@ class ZipEngine
     ): void {
         $argv[0] = $resolvedBinary;
 
-        $process = new Process($argv, $cwd);
-        $process->setTimeout($this->timeout > 0 ? $this->timeout : null);
-
-        try {
-            if ($onProgress !== null) {
-                $buffer = '';
-                $process->run(function (string $type, string $chunk) use ($onProgress, &$buffer): void {
-                    $buffer .= $chunk;
-                    $lines = explode("\n", $buffer);
-                    $buffer = array_pop($lines);
-                    foreach ($lines as $line) {
-                        if (trim($line) !== '') {
-                            $onProgress($line);
-                        }
-                    }
-                });
-                if (trim($buffer) !== '') {
-                    $onProgress($buffer);
-                }
-            } else {
-                $process->run();
-            }
-        } catch (ProcessTimedOutException) {
-            throw new ZipException('Zip process timed out after ' . $this->timeout . ' seconds.');
-        }
-
-        if (!$process->isSuccessful()) {
-            throw ZipException::{$failureFactory}(
-                implode(' ', $argv),
-                $process->getExitCode() ?? 1,
-                trim($process->getErrorOutput())
-            );
-        }
+        $this->runProcess(
+            $argv,
+            null,
+            $cwd,
+            $onProgress,
+            fn (int $code, string $stderr) => throw ZipException::{$failureFactory}(implode(' ', $argv), $code, $stderr),
+            fn () => throw new ZipException('Zip process timed out after ' . $this->timeout . ' seconds.'),
+        );
     }
 }

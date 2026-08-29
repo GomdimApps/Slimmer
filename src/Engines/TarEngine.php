@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace GomdimApps\Slimmer\Engines;
 
 use GomdimApps\Slimmer\Exceptions\TarException;
+use GomdimApps\Slimmer\Support\CompressionLevelValidator;
 use GomdimApps\Slimmer\Traits\Binary;
+use GomdimApps\Slimmer\Traits\ProcessExecution;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
@@ -17,6 +19,7 @@ use Symfony\Component\Process\Process;
 class TarEngine
 {
     use Binary;
+    use ProcessExecution;
 
     public const SUPPORTED_FORMATS = ['gz', 'zst', 'bz2'];
 
@@ -27,8 +30,15 @@ class TarEngine
         'bz2' => [1, 9],
     ];
 
+    /** File extension per format. */
+    public const EXTENSIONS = [
+        'gz'  => '.tar.gz',
+        'zst' => '.tar.zst',
+        'bz2' => '.tar.bz2',
+    ];
+
     /** Resolved absolute path to the tar binary. */
-    private string $binary;
+    private readonly string $binary;
 
     /** Execution timeout in seconds (0 = no timeout). */
     private float $timeout = 0;
@@ -200,11 +210,7 @@ class TarEngine
      */
     public function resolveOutputPath(string $inputPath, string $outputPath, string $format): string
     {
-        $extension = match ($format) {
-            'zst' => '.tar.zst',
-            'bz2' => '.tar.bz2',
-            default => '.tar.gz',
-        };
+        $extension = self::EXTENSIONS[$format] ?? '.tar.gz';
 
         if (str_ends_with($outputPath, $extension)) {
             return $outputPath;
@@ -421,13 +427,7 @@ class TarEngine
     {
         $this->validateFormat($format);
 
-        [$min, $max] = self::LEVEL_RANGES[$format];
-        if ($this->compressionLevel < $min || $this->compressionLevel > $max) {
-            throw new \InvalidArgumentException(
-                "Compression level {$this->compressionLevel} is out of range for format \"{$format}\" "
-                . "(allowed: {$min}-{$max})."
-            );
-        }
+        CompressionLevelValidator::assertInRange($this->compressionLevel, self::LEVEL_RANGES[$format], $format);
 
         return match ($format) {
             'gz'  => "gzip -{$this->compressionLevel}",
@@ -499,43 +499,14 @@ class TarEngine
         ?callable $onProgress = null,
         string $failureFactory = 'compressionFailed'
     ): void {
-        $process = new Process($argv);
-        $process->setTimeout($this->timeout > 0 ? $this->timeout : null);
-
-        if ($fileList !== null) {
-            $process->setInput(implode("\n", $fileList));
-        }
-
-        try {
-            if ($onProgress !== null) {
-                $buffer = '';
-                $process->run(function (string $type, string $chunk) use ($onProgress, &$buffer): void {
-                    $buffer .= $chunk;
-                    $lines = explode("\n", $buffer);
-                    $buffer = array_pop($lines);
-                    foreach ($lines as $line) {
-                        if ($line !== '') {
-                            $onProgress($line);
-                        }
-                    }
-                });
-                if ($buffer !== '') {
-                    $onProgress($buffer);
-                }
-            } else {
-                $process->run();
-            }
-        } catch (ProcessTimedOutException) {
-            throw new TarException('Tar process timed out after ' . $this->timeout . ' seconds.');
-        }
-
-        if (!$process->isSuccessful()) {
-            throw TarException::{$failureFactory}(
-                implode(' ', $argv),
-                $process->getExitCode() ?? 1,
-                trim($process->getErrorOutput())
-            );
-        }
+        $this->runProcess(
+            $argv,
+            $fileList !== null ? implode("\n", $fileList) : null,
+            null,
+            $onProgress,
+            fn (int $code, string $stderr) => throw TarException::{$failureFactory}(implode(' ', $argv), $code, $stderr),
+            fn () => throw new TarException('Tar process timed out after ' . $this->timeout . ' seconds.'),
+        );
     }
 
     /**

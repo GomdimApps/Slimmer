@@ -12,27 +12,19 @@ describe('CompressTar', function () {
     beforeEach(function () {
         $this->documentDir = dirname(__DIR__, 3) . '/document';
 
-        // Writable output directory for archive files
-        $this->outputDir = sys_get_temp_dir() . '/slimmer_tar_opt_out_' . uniqid();
-        mkdir($this->outputDir);
-
-        // Source directory with a predictable file tree (including one empty subdir)
-        $this->sourceDir = sys_get_temp_dir() . '/slimmer_tar_opt_src_' . uniqid();
-        mkdir($this->sourceDir);
-        mkdir($this->sourceDir . '/subdir');
-        mkdir($this->sourceDir . '/empty');
-        file_put_contents($this->sourceDir . '/hello.txt', str_repeat('Hello, Slimmer!', 100));
-        file_put_contents($this->sourceDir . '/data.json', str_repeat('{"key":"value"}', 150));
-        file_put_contents($this->sourceDir . '/subdir/nested.txt', str_repeat('Nested content.', 100));
+        $fixture = makeArchiveFixture('slimmer_tar_opt', [
+            'hello.txt'         => str_repeat('Hello, Slimmer!', 100),
+            'data.json'         => str_repeat('{"key":"value"}', 150),
+            'subdir/nested.txt' => str_repeat('Nested content.', 100),
+        ], withEmptyDir: true);
+        $this->outputDir = $fixture->outputDir;
+        $this->sourceDir = $fixture->sourceDir;
 
         $this->optimizer = new CompressTar();
     });
 
     afterEach(function () {
-        removeDir($this->outputDir);
-        if (is_dir($this->sourceDir)) {
-            removeDir($this->sourceDir);
-        }
+        removeArchiveFixture((object) ['outputDir' => $this->outputDir, 'sourceDir' => $this->sourceDir]);
     });
 
     // -------------------------------------------------------------------------
@@ -53,49 +45,24 @@ describe('CompressTar', function () {
     // Fluent API — returns same instance
     // -------------------------------------------------------------------------
 
-    it('withFormat returns the same instance', function () {
-        expect($this->optimizer->withFormat('gz'))->toBe($this->optimizer);
-    });
-
-    it('withCompressionLevel returns the same instance', function () {
-        expect($this->optimizer->withCompressionLevel(9))->toBe($this->optimizer);
-    });
-
-    it('withThreads returns the same instance', function () {
-        expect($this->optimizer->withThreads(4))->toBe($this->optimizer);
-    });
-
-    it('withExclude returns the same instance', function () {
-        expect($this->optimizer->withExclude('*.log'))->toBe($this->optimizer);
-    });
-
-    it('withCustomArgs returns the same instance', function () {
-        expect($this->optimizer->withCustomArgs('--verbose'))->toBe($this->optimizer);
-    });
-
-    it('preservePermissions returns the same instance', function () {
-        expect($this->optimizer->preservePermissions())->toBe($this->optimizer);
-    });
-
-    it('ignoreEmptyDirectories returns the same instance', function () {
-        expect($this->optimizer->ignoreEmptyDirectories())->toBe($this->optimizer);
+    it('fluent setters return the same instance', function () {
+        expect($this->optimizer->withFormat('gz'))->toBe($this->optimizer)
+            ->and($this->optimizer->withCompressionLevel(9))->toBe($this->optimizer)
+            ->and($this->optimizer->withThreads(4))->toBe($this->optimizer)
+            ->and($this->optimizer->withExclude('*.log'))->toBe($this->optimizer)
+            ->and($this->optimizer->withCustomArgs('--verbose'))->toBe($this->optimizer)
+            ->and($this->optimizer->preservePermissions())->toBe($this->optimizer)
+            ->and($this->optimizer->ignoreEmptyDirectories())->toBe($this->optimizer)
+            ->and($this->optimizer->withProgress(function () {}))->toBe($this->optimizer);
     });
 
     // -------------------------------------------------------------------------
     // withFormat() validation
     // -------------------------------------------------------------------------
 
-    it('withFormat accepts gz', function () {
-        expect($this->optimizer->withFormat('gz'))->toBe($this->optimizer);
-    });
-
-    it('withFormat accepts zst', function () {
-        expect($this->optimizer->withFormat('zst'))->toBe($this->optimizer);
-    });
-
-    it('withFormat accepts bz2', function () {
-        expect($this->optimizer->withFormat('bz2'))->toBe($this->optimizer);
-    });
+    it('withFormat accepts a supported format', function (string $format) {
+        expect($this->optimizer->withFormat($format))->toBe($this->optimizer);
+    })->with(['gz', 'zst', 'bz2']);
 
     it('withFormat throws InvalidArgumentException for an unknown format', function () {
         expect(fn () => $this->optimizer->withFormat('rar'))
@@ -146,14 +113,15 @@ describe('CompressTar', function () {
     // optimize() — source directory with known content
     // -------------------------------------------------------------------------
 
-    it('optimize creates a .tar.gz archive from the source directory', function () {
-        $output = $this->outputDir . '/archive.tar.gz';
+    it('optimize creates a .tar.<ext> archive from the source directory', function (string $format) {
+        $output = $this->outputDir . "/archive.tar.{$format}";
 
-        $this->optimizer->optimize($this->sourceDir, $output);
+        $ratio = $this->optimizer->withFormat($format)->optimize($this->sourceDir, $output);
 
         expect(is_file($output))->toBeTrue()
-            ->and(filesize($output))->toBeGreaterThan(0);
-    });
+            ->and(filesize($output))->toBeGreaterThan(0)
+            ->and($ratio)->toBeFloat();
+    })->with(['gz', 'zst', 'bz2']);
 
     it('optimize returns a ratio between 0.0 and 1.0', function () {
         $output = $this->outputDir . '/ratio_test.tar.gz';
@@ -215,14 +183,8 @@ describe('CompressTar', function () {
     // -------------------------------------------------------------------------
     // optimize() — .tar.zst
     // -------------------------------------------------------------------------
-
-    it('optimize creates a .tar.zst archive', function () {
-        $output = $this->outputDir . '/archive.tar.zst';
-        $ratio  = $this->optimizer->withFormat('zst')->optimize($this->sourceDir, $output);
-
-        expect(is_file($output))->toBeTrue()
-            ->and($ratio)->toBeFloat();
-    });
+    // (the basic "creates a .tar.zst archive" check was merged into the gz/zst/bz2
+    // dataset test above.)
 
     it('optimize with zst and multiple threads produces a valid archive', function () {
         $output = $this->outputDir . '/parallel.tar.zst';
@@ -296,18 +258,14 @@ describe('CompressTar', function () {
         expect($cmd)->toBeString()->not->toBeEmpty();
     });
 
-    it('dryRun contains the gzip compress program for gz format', function () {
-        $cmd = $this->optimizer->dryRun($this->sourceDir, $this->outputDir . '/out.tar.gz');
+    it('dryRun contains the right compress program per format', function (string $format, string $program) {
+        $cmd = $this->optimizer->withFormat($format)
+            ->dryRun($this->sourceDir, $this->outputDir . "/out.tar.{$format}");
 
-        expect($cmd)->toContain('gzip');
-    });
-
-    it('dryRun contains the zstd compress program for zst format', function () {
-        $cmd = $this->optimizer->withFormat('zst')
-            ->dryRun($this->sourceDir, $this->outputDir . '/out.tar.zst');
-
-        expect($cmd)->toContain('zstd');
-    });
+        expect($cmd)->toContain($program);
+    })->with([
+        ['gz', 'gzip'], ['zst', 'zstd'], ['bz2', 'bzip2'],
+    ]);
 
     it('dryRun includes -p when preservePermissions is enabled', function () {
         $cmd = $this->optimizer->preservePermissions()
@@ -424,6 +382,32 @@ describe('CompressTar', function () {
             ->toThrow(SlimmerException::class);
     });
 
+    // Regression guard (approved refactor fix): CompressTar must still throw TarException
+    // (not some other type) when source deletion fails during compressAndRetain(), now that
+    // the deletion-failure exception is supplied via a SourceFiles trait hook shared with Zip.
+    it('compressAndRetain throws TarException when source deletion fails', function () {
+        $lockedDir  = sys_get_temp_dir() . '/slimmer_tar_locked_' . uniqid();
+        mkdir($lockedDir);
+        $retainFile = $lockedDir . '/data.txt';
+        file_put_contents($retainFile, str_repeat('x', 100));
+
+        chmod($lockedDir, 0500); // read+execute, no write -> unlink() of $retainFile will fail
+
+        // Suppress the genuine unlink() permission warning this deliberately triggers,
+        // so the test reports pass/fail on the assertion alone, not as a PHPUnit warning.
+        set_error_handler(static fn () => true);
+
+        try {
+            expect(fn () => $this->optimizer->compressAndRetain($retainFile, $this->outputDir, 5))
+                ->toThrow(TarException::class);
+        } finally {
+            restore_error_handler();
+            chmod($lockedDir, 0755);
+            @unlink($retainFile);
+            @rmdir($lockedDir);
+        }
+    });
+
     // -------------------------------------------------------------------------
     // cleanDirectory()
     // -------------------------------------------------------------------------
@@ -524,21 +508,8 @@ describe('CompressTar', function () {
     // -------------------------------------------------------------------------
     // .tar.bz2 format
     // -------------------------------------------------------------------------
-
-    it('optimize creates a .tar.bz2 archive', function () {
-        $output = $this->outputDir . '/archive.tar.bz2';
-        $ratio  = $this->optimizer->withFormat('bz2')->optimize($this->sourceDir, $output);
-
-        expect(is_file($output))->toBeTrue()
-            ->and($ratio)->toBeFloat();
-    });
-
-    it('dryRun contains the bzip2 compress program for bz2 format', function () {
-        $cmd = $this->optimizer->withFormat('bz2')
-            ->dryRun($this->sourceDir, $this->outputDir . '/out.tar.bz2');
-
-        expect($cmd)->toContain('bzip2');
-    });
+    // (the basic "creates a .tar.bz2 archive" and "dryRun contains bzip2" checks
+    // were merged into their gz/zst/bz2 dataset tests above.)
 
     // -------------------------------------------------------------------------
     // Compression-level validation
@@ -570,10 +541,7 @@ describe('CompressTar', function () {
     // -------------------------------------------------------------------------
     // withProgress()
     // -------------------------------------------------------------------------
-
-    it('withProgress returns the same instance', function () {
-        expect($this->optimizer->withProgress(function () {}))->toBe($this->optimizer);
-    });
+    // (chainability is covered by "fluent setters return the same instance" above.)
 
     it('withProgress invokes the callback while compressing', function () {
         $seen = [];

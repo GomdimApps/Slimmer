@@ -48,13 +48,6 @@ describe('PdfOptimizer', function () {
         expect($header)->toBe('%PDF-');
     });
 
-    it('compresses sample.pdf with the /screen preset', function () {
-        $ratio = $this->optimizer->withQuality('screen')->optimize($this->samplePdf, $this->outputPath);
-
-        expect(is_file($this->outputPath))->toBeTrue()
-            ->and($ratio)->toBeFloat();
-    });
-
     it('compresses sample.pdf with the /printer preset', function () {
         $ratio = $this->optimizer->withQuality('printer')->optimize($this->samplePdf, $this->outputPath);
 

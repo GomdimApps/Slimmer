@@ -10,14 +10,12 @@ use GomdimApps\Slimmer\Optimizers\ExtractZip;
 describe('ExtractZip', function () {
 
     beforeEach(function () {
-        $this->outputDir = sys_get_temp_dir() . '/slimmer_extract_zip_out_' . uniqid();
-        mkdir($this->outputDir);
-
-        $this->sourceDir = sys_get_temp_dir() . '/slimmer_extract_zip_src_' . uniqid();
-        mkdir($this->sourceDir);
-        mkdir($this->sourceDir . '/subdir');
-        file_put_contents($this->sourceDir . '/hello.txt', str_repeat('Hello, Slimmer!', 50));
-        file_put_contents($this->sourceDir . '/subdir/nested.txt', str_repeat('Nested content.', 50));
+        $fixture = makeArchiveFixture('slimmer_extract_zip', [
+            'hello.txt'         => str_repeat('Hello, Slimmer!', 50),
+            'subdir/nested.txt' => str_repeat('Nested content.', 50),
+        ]);
+        $this->outputDir = $fixture->outputDir;
+        $this->sourceDir = $fixture->sourceDir;
 
         $this->archive = $this->outputDir . '/source.zip';
         (new CompressZip())->optimize($this->sourceDir, $this->archive);
@@ -26,8 +24,7 @@ describe('ExtractZip', function () {
     });
 
     afterEach(function () {
-        removeDir($this->outputDir);
-        removeDir($this->sourceDir);
+        removeArchiveFixture((object) ['outputDir' => $this->outputDir, 'sourceDir' => $this->sourceDir]);
     });
 
     // -------------------------------------------------------------------------
@@ -46,12 +43,9 @@ describe('ExtractZip', function () {
     // Fluent API — returns same instance
     // -------------------------------------------------------------------------
 
-    it('withExclude returns the same instance', function () {
-        expect($this->extractor->withExclude('*.log'))->toBe($this->extractor);
-    });
-
-    it('withProgress returns the same instance', function () {
-        expect($this->extractor->withProgress(function () {}))->toBe($this->extractor);
+    it('fluent setters return the same instance', function () {
+        expect($this->extractor->withExclude('*.log'))->toBe($this->extractor)
+            ->and($this->extractor->withProgress(function () {}))->toBe($this->extractor);
     });
 
     // -------------------------------------------------------------------------
